@@ -8,11 +8,11 @@ New pipelines are created and removed with their coresponding branches (e.g. aft
 To triger any pipelines  after creation one has simply to push a new commit with desired version files (semver form: x.xx.xx). \
 It can be used for CI/CD pipelines for various modules like ECS, EKS, Websites, Cost Monitoring, App1, App2 \
 and others. \
-CloudFormation parameters for any modules except aws-init are stored in SecretsManager. \
+CloudFormation parameters for any modules except aws-init are stored in SecretsManager.
 
-aws-init is using CodeCommit to store its code and generate repos + pipelines for any modules. \
+aws-init is using CodeCommit to store its code and generate repos + pipelines for any modules.
 
-aws-init is building the pipelines with CodePipeline and CodeBuild. \
+aws-init is building the pipelines with CodePipeline and CodeBuild.
 
 ## This is managing:
 * CodeCommit repo for itself
@@ -41,24 +41,24 @@ aws-init is building the pipelines with CodePipeline and CodeBuild. \
 3. configure AWS Cli profile based on the new user
 
 4. create local_env_variables and fill out the values.
-Example:
-DEFAULT_AWS_PROFILE=MY_DEV_AWS_PROFILE
-DEFAULT_AWS_REGION=eu-west-1
-PROJECT_NAME=MY_PROJECT
-MODULES=(ecs eks mywebsite cost-controller App1 App2 )
+Example: \
+DEFAULT_AWS_PROFILE=MY_DEV_AWS_PROFILE \
+DEFAULT_AWS_REGION=eu-west-1 \ 
+PROJECT_NAME=MY_PROJECT \ 
+MODULES=(ecs eks mywebsite cost-controller App1 App2 ) 
 
-5. run first_time_only.sh
+5. run first_time_only.sh \
 This will output the aws-init CodeCommit repos for all modules and generate the "master" pipelines
 
-6. initialize git with the newly created CodeCommit repo above. DO NOT COMMIT YET!
+6. initialize git with the newly created CodeCommit repo above. DO NOT COMMIT YET! \
 checkout: https://docs.aws.amazon.com/codecommit/latest/userguide/setting-up-ssh-unixes.html
 
-7. install and configure git-secret
+7. install and configure git-secret \
 https://git-secret.io/
 
-8. update parameters.json for the AWS Secrets Manager 
-with the values required by all CloudFormation templates in modules and including aws-init.
-FYI: aws-init is also considered a module
+8. update parameters.json for the AWS Secrets Manager \
+with the values required by all CloudFormation templates in modules and including aws-init. \
+FYI: aws-init is also considered a module \
 Example:
 [
   {
