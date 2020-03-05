@@ -43,8 +43,8 @@ aws-init is building the pipelines with CodePipeline and CodeBuild.
 4. create local_env_variables and fill out the values.\
 Example:\
 DEFAULT_AWS_PROFILE=MY_DEV_AWS_PROFILE\
-DEFAULT_AWS_REGION=eu-west-1\ 
-PROJECT_NAME=MY_PROJECT\ 
+DEFAULT_AWS_REGION=eu-west-1\
+PROJECT_NAME=MY_PROJECT\
 MODULES=(ecs eks mywebsite cost-controller App1 App2 )
 
 5. run first_time_only.sh \
