@@ -99,20 +99,17 @@ To triger module pipelines you need to commit and push to the specific module re
 * git commit\
 * repeat
 
-* !IMPORTANT: 
-- make sure git-secret is working properly as this is critical for operation
+* !IMPORTANT: make sure git-secret is working properly as this is critical for operation
 
 ## How to add or remove modules
 * Just add or remove the module name in the MODULES variable from local_env_variables,\
 commit and push new tag
-
 
 ## Aditional Information
 The scope of this project is to demonstrate how to setup a 100% AWS CI/CD pipeline.
 Similar could be easily setup in Gitlab, Jenkins or Bitbucket Pipelines but what matters here 
 are the DevOps principles on which this sample project is based:
 
-1.
 All cloud formation parameters and other variables are hidden in AWS Secret Manager, 
 solving the dilemma of what is a secret and what not. 
 Many of the parameters used in a pipeline "could be a secret" giving hints to 
@@ -120,18 +117,14 @@ a possible attacker about your infrastructure. Therefore better be safe and obfu
 Aws Secrets Manager gives you several operational advantages even when compared to 
 AWS Parameter Store (e.g. loading all project secrets in one json ).
 
-2.
 Tried to parametrize everything, the only differences beying the above parameters for the 
 scripts. Less values are hardcoded, the better. Optimally no parameters or variable is hardcoded.
 All resource names should be dynamic and based on given parameters.
 
-3.
 Everything must be versioned and commits easy to understand. Therefore commit often, with good descriptions and a version tag.
 
-4.
 Build phase must be completely separated from deploy phase as they could be operated by separated teams at different dates.
 
-5.
 Put in place good automated cost controls and security checks. 
 For flexibility a lambda running periodically for these pourposes should be ok.
 
