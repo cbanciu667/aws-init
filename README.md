@@ -59,23 +59,23 @@ https://git-secret.io/
 8. update parameters.json for the AWS Secrets Manager \
 with the values required by all CloudFormation templates in modules and including aws-init. \
 FYI: aws-init is also considered a module \
-Example:
-[
-  {
-    "MODULE_NAME-PARAMETER_NAME_1": "VALUE_1"
-  }, 
-  {
-    "MODULE_NAME-PARAMETER_NAME_2": "VALUE_2"
-  },   
-  {
-    "MODULE_NAME-PARAMETER_NAME_3": "VALUE_3"
-  },     
-  {
-    "MODULE_NAME-PARAMETER_NAME_N": "VALUE_N"
-  }   
-]
+Example:\
+[\
+  {\
+    "MODULE_NAME-PARAMETER_NAME_1": "VALUE_1"\
+  },\
+  {\
+    "MODULE_NAME-PARAMETER_NAME_2": "VALUE_2"\
+  },\
+  {\
+    "MODULE_NAME-PARAMETER_NAME_3": "VALUE_3"\
+  },\
+  {\
+    "MODULE_NAME-PARAMETER_NAME_N": "VALUE_N"\
+  }\
+]\
 
-9. add parameters.json to git secret, encrypt and decrypt once
+9. add parameters.json to git secret, encrypt and decrypt once\
 keep the file decrypted for now
 
 10. run ./secrets.sh create-secret
@@ -84,26 +84,26 @@ keep the file decrypted for now
 
 12. git commit on master branch
 
-ATENTION: this will triger only generate the master pipelines 
-It will not triger any module pipeline for deployments.
+ATENTION: this will triger only generate the master pipelines\
+It will not triger any module pipeline for deployments.\
 To triger module pipelines you need to commit and push to the specific module repo including buildspec.yml and other elements.
 
 
 ## Continous operation after initial configuration above
-* git pull
-* decrypt local_env_variables and parameters.json (ONLY IF REQUIRED)
-* update local_env_variables and parameters.json if needed (ONLY IF REQUIRED)
-* run ./secrets.sh update-secret (ONLY IF REQUIRED)
-* update code
-* change version file
-* git commit
+* git pull\
+* decrypt local_env_variables and parameters.json (ONLY IF REQUIRED)\
+* update local_env_variables and parameters.json if needed (ONLY IF REQUIRED)\
+* run ./secrets.sh update-secret (ONLY IF REQUIRED)\
+* update code\
+* change version file\
+* git commit\
 * repeat
 
 * !IMPORTANT: 
 - make sure git-secret is working properly as this is critical for operation
 
 ## How to add or remove modules
-* Just add or remove the module name in the MODULES variable from local_env_variables,
+* Just add or remove the module name in the MODULES variable from local_env_variables,\
 commit and push new tag
 
 
