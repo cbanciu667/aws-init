@@ -1,0 +1,17 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - echo Installing dependencies.
+  pre_build:
+    commands:
+      - echo Checking pre-requisites with inspec.
+      - ls -lah
+  build:
+    commands:
+      - echo test
+  post_build:
+    commands:
+      - echo Validating deployment with inspec.
+      - echo Build completed on `date`
