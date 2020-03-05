@@ -1,18 +1,18 @@
-# aws-init - AWS event-driven pipeline orchestrator
+# aws-init - an AWS event-driven pipeline orchestrator
 by B. Cosmin, 2020
 
 # Description
-This is a pipeline orchestrator based 100% on AWS and git-flow.
-By running first_time_only.sh it creates new master pipelines based on CodeBuild.
-New pipelines are created and removed with their coresponding branches (e.g. after PRs).
-To triger any pipelines  after creation one has simply to push a new commit with desired version files (semver form: x.xx.xx).
-It can be used for CI/CD pipelines for various modules like ECS, EKS, Websites, Cost Monitoring, App1, App2
-and others.
-CloudFormation parameters for any modules except aws-init are stored in SecretsManager.
+This is a pipeline orchestrator based 100% on AWS and git-flow. \
+By running first_time_only.sh it creates new master pipelines based on CodeBuild. \
+New pipelines are created and removed with their coresponding branches (e.g. after PRs). \
+To triger any pipelines  after creation one has simply to push a new commit with desired version files (semver form: x.xx.xx). \
+It can be used for CI/CD pipelines for various modules like ECS, EKS, Websites, Cost Monitoring, App1, App2 \
+and others. \
+CloudFormation parameters for any modules except aws-init are stored in SecretsManager. \
 
-aws-init is using CodeCommit to store its code and generate repos + pipelines for any modules.
+aws-init is using CodeCommit to store its code and generate repos + pipelines for any modules. \
 
-aws-init is building the pipelines with CodePipeline and CodeBuild.
+aws-init is building the pipelines with CodePipeline and CodeBuild. \
 
 ## This is managing:
 * CodeCommit repo for itself
