@@ -1,0 +1,283 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Template for CD pipelines'
+Parameters:
+  ProjectName:
+    Description: Name for the current project
+    Type: String
+    Default: test-project
+  StageName:
+    Description: Stage name
+    Type: String
+    Default: dev
+  ModuleName:
+    Description: Module for which pipeline is build
+    Type: String
+    Default: aws-init
+  RandomParameter:
+    Description: Random parameter to force stack updates
+    Type: String
+    Default: 123456    
+  Version:
+    Description: Version
+    Type: String
+    Default: 1.0.0
+
+Resources:
+# CodePipeline
+# The CD pipeline
+#      
+  ModuleCdPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    DependsOn: ModuleCdCodePipelineServiceRole
+    Properties:
+      Name: !Sub ${AWS::StackName}
+      RoleArn: !GetAtt ModuleCdCodePipelineServiceRole.Arn
+      ArtifactStore:
+        Location:                  
+          Fn::ImportValue:
+            !Sub "${ProjectName}-ci-pipeline-${ModuleName}-master-artifacts-bucket"
+        Type: S3              
+      Stages:
+        - Name: Source
+          Actions:
+            - InputArtifacts: []
+              Name: ArtifactsSourceS3
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: '1'
+                Provider: S3
+              OutputArtifacts:
+                - Name: CfTemplates
+              Configuration:
+                S3Bucket: 
+                  Fn::ImportValue:
+                    !Sub "${ProjectName}-ci-pipeline-${ModuleName}-master-artifacts-bucket"
+                PollForSourceChanges: 'true'
+                S3ObjectKey: !Join ['', [ !Sub "templates/${ModuleName}-ci-pipeline-",  !Ref Version, '.yaml' ]]
+              RunOrder: 1
+        - Name: ApproveDeployment
+          Actions:
+            - InputArtifacts: []
+              Name: !Sub ApproveDeploymentTo${StageName}
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: '1'
+                Provider: Manual
+              OutputArtifacts: []
+              Configuration: {}
+              RunOrder: 1
+        - Name: Deployment
+          Actions:
+            - InputArtifacts:
+                - Name: CfTemplates
+              Name: !Sub ModuleDeploymentTo${StageName}
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: '1'
+                Provider: CloudFormation
+              OutputArtifacts: []
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                RoleArn: 
+                  !GetAtt ModuleCdCfCodePipelineServiceRole.Arn
+                Capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
+                StackName: !Sub "${ProjectName}-testci-pipeline-${ModuleName}-${StageName}"
+                # ParameterOverrides: !Join ['', ["{ProjectName: ", !Ref ProjectName, ",ModuleName: ", !Ref ModuleName ,",BranchName: ", 'master', '}']]
+                TemplatePath: !Join ['', [ !Sub "CfTemplates::templates/${ModuleName}-ci-pipeline-", !Ref Version, '.yaml' ]]
+              RunOrder: 1
+      Tags: 
+        - 
+          Key: 'scope'
+          Value: !Ref ProjectName
+        - 
+          Key: 'module'
+          Value: !Ref ModuleName
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}                      
+# CodePipeline
+# Role and permissions used by the CD pipeline
+#            
+  ModuleCdCodePipelineServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: !Sub ${AWS::StackName}-cp-cd-policy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codecommit:CancelUploadArchive
+                  - codecommit:GetBranch
+                  - codecommit:GetCommit
+                  - codecommit:GetUploadArchiveStatus
+                  - codecommit:UploadArchive
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - codedeploy:CreateDeployment
+                  - codedeploy:GetApplicationRevision
+                  - codedeploy:GetDeployment
+                  - codedeploy:GetDeploymentConfig
+                  - codedeploy:RegisterApplicationRevision
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                  - lambda:ListFunctions
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:*Put*
+                  - s3:*Get*                  
+                  - s3:*Create*
+                  - s3:*Update*
+                  - iam:PassRole                  
+                  - cloudwatch:*               
+                  - cloudformation:*
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ec2:*
+                  - sns:*
+                  - rds:*
+                  - sqs:*
+                  - ecs:*
+                  - autoscaling:*
+                  - elasticbeanstalk:*
+                  - elasticloadbalancing:*
+                Resource: '*'
+                Condition:
+                    StringEquals: 
+                      "aws:ResourceTag/security": !Sub ${ProjectName}-${ModuleName}
+      Tags: 
+        - 
+          Key: 'scope'
+          Value: !Ref ProjectName
+        - 
+          Key: 'module'
+          Value: !Ref ModuleName
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}              
+# CodePipeline
+# Role and permissions used by the CF deploy step in the CD pipeline
+#            
+  ModuleCdCfCodePipelineServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: !Sub ${AWS::StackName}-cf-policy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codedeploy:CreateDeployment
+                  - codedeploy:GetApplicationRevision
+                  - codedeploy:GetDeployment
+                  - codedeploy:GetDeploymentConfig
+                  - codedeploy:RegisterApplicationRevision
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                  - lambda:ListFunctions
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:*Put*
+                  - s3:*Get*                  
+                  - s3:*Create*
+                  - s3:*Update*
+                  - cloudwatch:*               
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ec2:*
+                  - sns:*
+                  - rds:*
+                  - sqs:*
+                  - ecs:*
+                  - autoscaling:*
+                  - elasticbeanstalk:*
+                  - elasticloadbalancing:*
+                Resource: '*'
+                Condition:
+                    StringEquals: 
+                      "aws:ResourceTag/scope": !Ref ProjectName
+      Tags: 
+        - 
+          Key: 'scope'
+          Value: !Ref ProjectName
+        - 
+          Key: 'module'
+          Value: !Ref ModuleName
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}              
+# Dummy role to force stack updates
+#            
+  DummyRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: !Sub ${RandomParameter}-cd-pipeline-dummy-role
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codedeploy:GetDeployment
+                Resource: '*'
+      Tags: 
+        - 
+          Key: 'scope'
+          Value: !Ref ProjectName
+        - 
+          Key: 'module'
+          Value: !Ref ModuleName 
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}                               

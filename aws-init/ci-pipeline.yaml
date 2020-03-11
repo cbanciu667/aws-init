@@ -1,15 +1,11 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Template for generating the pipelines'
+Description: 'Template for the CI pipelines'
 
 Parameters:
   ProjectName:
     Description: Name for the current project
     Type: String
     Default: test-project
-  Version:
-    Description: Module version    
-    Type: String
-    Default: 1.0.0
   BranchName:
     Description: CodeCommit branch name for CodePipeline
     Type: String
@@ -18,6 +14,10 @@ Parameters:
     Description: Module for which pipeline is build
     Type: String
     Default: aws-init
+  Version:
+    Description: Version
+    Type: String
+    Default: 1.0.0
 
 Conditions:
   MasterBranch: !Equals
@@ -28,7 +28,7 @@ Resources:
 # S3
 # S3 bucket used for to store various pipeline artifacts
 #
-  AwsInitArtifactsBucket:
+  ModuleArtifactsBucket:
     Type: AWS::S3::Bucket
     Condition: MasterBranch    
     DeletionPolicy: Retain
@@ -47,6 +47,9 @@ Resources:
         - 
           Key: 'module'
           Value: !Ref ModuleName
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}          
 # CodeCommit
 # CodeCommit repo for the aws init module
 #
@@ -62,7 +65,10 @@ Resources:
           Value: !Ref ProjectName
         - 
           Key: 'module'
-          Value: !Ref ModuleName          
+          Value: !Ref ModuleName
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}                   
 # CloudWatch
 # Permissions used by CloudWatch to invoke pipeline management lambda
 #
@@ -70,7 +76,7 @@ Resources:
     Type: AWS::Lambda::Permission
     Condition: MasterBranch     
     Properties:
-      FunctionName: !Ref AwsInitCreatePipeline
+      FunctionName: !Ref ModuleCreatePipeline
       Action: 'lambda:InvokeFunction'
       Principal: events.amazonaws.com
       SourceArn: !GetAtt AmazonCloudWatchEventRule.Arn
@@ -98,7 +104,7 @@ Resources:
                 - MasterBranch 
                 - !GetAtt ModuleRepo.Name
                 - Fn::ImportValue: 
-                    !Sub "${ProjectName}-pipeline-${ModuleName}-prod-repo"
+                    !Sub "${ProjectName}-pipeline-${ModuleName}-master-repo"
         detail:
           event:
               - referenceCreated
@@ -108,12 +114,12 @@ Resources:
             - branch
       State: ENABLED
       Targets: 
-        - Arn: !GetAtt AwsInitCreatePipeline.Arn
-          Id: AwsInitCreatePipeline
+        - Arn: !GetAtt ModuleCreatePipeline.Arn
+          Id: ModuleCreatePipeline
 # Lambda
 # Role and permissions used by the pipelines management lambda function
 # 
-  AwsInitCreatePipelineLambdaRole:
+  ModuleCreatePipelineLambdaRole:
     Type: AWS::IAM::Role
     Condition: MasterBranch    
     Properties:
@@ -153,26 +159,29 @@ Resources:
           Value: !Ref ProjectName
         - 
           Key: 'module'
-          Value: !Ref ModuleName          
+          Value: !Ref ModuleName
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}                  
 # Lambda
 # Pipelines management lambda function
 #
-  AwsInitCreatePipeline:
-    DependsOn: AwsInitCreatePipelineLambdaRole
+  ModuleCreatePipeline:
+    DependsOn: ModuleCreatePipelineLambdaRole
     Type: AWS::Lambda::Function
     Condition: MasterBranch
     Properties:
       FunctionName: !Sub ${AWS::StackName}-lambda
       Handler: index.lambda_handler
-      Role: !GetAtt AwsInitCreatePipelineLambdaRole.Arn
+      Role: !GetAtt ModuleCreatePipelineLambdaRole.Arn
       Runtime: "python3.6"
       Timeout: 25
       Environment:
             Variables:
-              TEMPLATE_VERSION: !Ref Version              
+              TEMPLATE_VERSION: !Ref Version
               PROJECT_NAME: !Ref ProjectName
               MODULE_NAME: !Ref ModuleName
-              S3_BUCKET: !Ref AwsInitArtifactsBucket
+              S3_BUCKET: !Ref ModuleArtifactsBucket
       Code:
         ZipFile: |
           import boto3
@@ -193,12 +202,12 @@ Resources:
               print(event)
               if (Branch == "master") and (Event == "referenceCreated" or Event == "referenceUpdated"):
                 codepipeline_response = codepipeline_client.start_pipeline_execution(
-                  name=f'{ProjectName}-pipeline-{ModuleName}-prod-pipeline'
+                  name=f'{ProjectName}-ci-pipeline-{ModuleName}-master-pipeline'
                 )
               elif (Branch != "master") and (Event == "referenceCreated"):
                 cf_client.create_stack(
-                    StackName= f'{ProjectName}-pipeline-{ModuleName}-{Branch}',
-                    TemplateURL= f'https://{S3Bucket}.s3-{Region}.amazonaws.com/templates/{ModuleName}-pipeline-{Version}.yaml',
+                    StackName= f'{ProjectName}-ci-pipeline-{ModuleName}-{Branch}',
+                    TemplateURL= f'https://{S3Bucket}.s3-{Region}.amazonaws.com/templates/{ModuleName}-ci-pipeline-{Version}.yaml',
                     Parameters=[
                         {
                             'ParameterKey': 'ProjectName',
@@ -226,11 +235,11 @@ Resources:
                 )
               elif (Branch != "master") and (Event == "referenceDeleted"):
                 cf_client.delete_stack(
-                    StackName= f'{ProjectName}-pipeline-{ModuleName}-{Branch}'
+                    StackName= f'{ProjectName}-ci-pipeline-{ModuleName}-{Branch}'
                   )
               elif (Branch != "master") and (Event == "referenceUpdated"):
                 codepipeline_response = codepipeline_client.start_pipeline_execution(
-                  name=f'{ProjectName}-pipeline-{ModuleName}-{Branch}-pipeline'
+                  name=f'{ProjectName}-ci-pipeline-{ModuleName}-{Branch}-pipeline'
                 )
               else:
                 print('CC triggered lambda function but no lambda action is defined!')
@@ -240,11 +249,14 @@ Resources:
           Value: !Ref ProjectName
         - 
           Key: 'module'
-          Value: !Ref ModuleName          
+          Value: !Ref ModuleName 
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}         
 # CodeBuild
-# Role used by CodeBuild to deploy further module pipelines
+# Role used by CodeBuild to deploy other modules pipelines
 #
-  AwsInitCodeBuildRole:
+  ModuleCodeBuildRole:
       Type: AWS::IAM::Role
       Properties:
         RoleName: !Sub ${AWS::StackName}-code-build-role
@@ -263,27 +275,28 @@ Resources:
               Version: '2012-10-17'
               Statement:
                 - Action:
-                  - ec2:*
                   - cloudformation:*
                   - iam:*
                   Effect: Allow
                   Resource: '*'
                   Condition:
                       StringEquals: 
-                        "aws:ResourceTag/scope": !Sub ${ProjectName}-${BranchName}-*
+                        "iam:ResourceTag/security": !Sub ${ProjectName}-${ModuleName}
           - PolicyName: !Sub ${AWS::StackName}-code-build-policy2
             PolicyDocument:
               Version: '2012-10-17'
               Statement:
                 - Action:
-                  - s3:*
                   - ec2:*
+                  - s3:*                  
                   - logs:*
                   - cloudformation:*
                   - cloudwatch:*
                   - codepipeline:Start*
                   - codepipeline:Describe*
-                  - codepipeline:Get*                          
+                  - codepipeline:Get* 
+                  - codepipeline:UpdatePipeline
+                  - secretsmanager:GetSecretValue
                   Effect: Allow
                   Resource: '*'
         Tags: 
@@ -292,16 +305,19 @@ Resources:
             Value: !Ref ProjectName
           - 
             Key: 'module'
-            Value: !Ref ModuleName            
+            Value: !Ref ModuleName
+          - 
+            Key: 'security'
+            Value: !Sub ${ProjectName}-${ModuleName}               
 # CodeBuild
 # This CodeBuild configuration is used to deploy other module pipelines                  
 #
-  AwsInitConfigFileBuild:
+  ModuleConfigFileBuild:
     Type: AWS::CodeBuild::Project
     Properties:
       Name: !Sub ${AWS::StackName}-code-build
       Description: !Sub "Code build for AWS Init and branch ${BranchName}"
-      ServiceRole: !Ref AwsInitCodeBuildRole
+      ServiceRole: !Ref ModuleCodeBuildRole
       Artifacts:
         Type: CODEPIPELINE
       Environment:
@@ -312,9 +328,9 @@ Resources:
           - Name: ARTIFACT_BUCKET
             Value: !If 
                     - MasterBranch 
-                    - !Ref AwsInitArtifactsBucket
+                    - !Ref ModuleArtifactsBucket
                     - Fn::ImportValue: 
-                        !Sub "${ProjectName}-pipeline-${ModuleName}-prod-artifacts-bucket"
+                        !Sub "${ProjectName}-ci-pipeline-${ModuleName}-master-artifacts-bucket"
       Source:
         Type: CODEPIPELINE
       Tags: 
@@ -323,24 +339,25 @@ Resources:
           Value: !Ref ProjectName
         - 
           Key: 'module'
-          Value: !Ref ModuleName          
+          Value: !Ref ModuleName
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}                      
 # CodePipeline
-# AWS Init pipeline        
+# The CI pipeline      
 #
-  AwsInitPipeline:
+  ModuleCiPipeline:
     Type: AWS::CodePipeline::Pipeline
-    DependsOn: AwsInitCodePipelineServiceRole
+    DependsOn: ModuleCiCodePipelineServiceRole
     Properties:
       Name: !Sub ${AWS::StackName}-pipeline
-      RoleArn: !GetAtt 
-        - AwsInitCodePipelineServiceRole
-        - Arn
+      RoleArn: !GetAtt ModuleCiCodePipelineServiceRole.Arn
       ArtifactStore:
         Location: !If 
                   - MasterBranch 
-                  - !Ref AwsInitArtifactsBucket
+                  - !Ref ModuleArtifactsBucket
                   - Fn::ImportValue: 
-                      !Sub "${ProjectName}-pipeline-${ModuleName}-prod-artifacts-bucket"
+                      !Sub "${ProjectName}-ci-pipeline-${ModuleName}-master-artifacts-bucket"
         Type: S3        
       Stages:
         - Name: Source
@@ -359,7 +376,7 @@ Resources:
                                 - MasterBranch
                                 - !GetAtt ModuleRepo.Name
                                 - Fn::ImportValue: 
-                                    !Sub "${ProjectName}-pipeline-${ModuleName}-prod-repo"
+                                    !Sub "${ProjectName}-ci-pipeline-${ModuleName}-master-repo"
                 PollForSourceChanges: false
               RunOrder: 1
         - Name: ModulesPipelines
@@ -371,7 +388,7 @@ Resources:
                 Provider: CodeBuild
                 Version: "1"
               Configuration:
-                ProjectName: !Ref AwsInitConfigFileBuild
+                ProjectName: !Ref ModuleConfigFileBuild
               InputArtifacts:
                 - Name: SourceOutput
       Tags: 
@@ -380,11 +397,14 @@ Resources:
           Value: !Ref ProjectName
         - 
           Key: 'module'
-          Value: !Ref ModuleName          
+          Value: !Ref ModuleName 
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}                     
 # CodePipeline
-# Role and permissions used by the AWS Init pipeline
+# Role and permissions used by the CI pipeline
 #            
-  AwsInitCodePipelineServiceRole:
+  ModuleCiCodePipelineServiceRole:
     Type: 'AWS::IAM::Role'
     Properties:
       AssumeRolePolicyDocument:
@@ -397,7 +417,7 @@ Resources:
             Action: 'sts:AssumeRole'
       Path: /
       Policies:
-        - PolicyName: !Sub ${AWS::StackName}-code-pipeline-policy
+        - PolicyName: !Sub ${AWS::StackName}-cp-ci-policy
           PolicyDocument:
             Version: 2012-10-17
             Statement:
@@ -447,6 +467,7 @@ Resources:
                   - autoscaling:*
                   - elasticbeanstalk:*
                   - elasticloadbalancing:*
+                  - secretsmanager:GetSecretValue
                 Resource: '*'
                 Condition:
                     StringEquals: 
@@ -457,13 +478,16 @@ Resources:
           Value: !Ref ProjectName
         - 
           Key: 'module'
-          Value: !Ref ModuleName             
+          Value: !Ref ModuleName    
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}                     
 #
 # Outputs section
 #
 Outputs:
   CodeCommitRepo:
-    Description: Code commit repo for Aws Init
+    Description: Code commit repo for the module
     Condition: MasterBranch
     Value: !GetAtt  ModuleRepo.Name
     Export:
@@ -471,6 +495,6 @@ Outputs:
   ArtifactsS3Bucket:
     Description: S3 bucket for the pipeline
     Condition: MasterBranch
-    Value: !Ref AwsInitArtifactsBucket
+    Value: !Ref ModuleArtifactsBucket
     Export:
-      Name: !Sub ${AWS::StackName}-artifacts-bucket                    
+      Name: !Sub ${AWS::StackName}-artifacts-bucket                           

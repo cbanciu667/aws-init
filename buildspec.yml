@@ -3,15 +3,17 @@ version: 0.2
 phases:
   install:
     commands:
-      - echo Installing dependencies.
+      - echo Installing dependencies and listing repo content
+      - ls -lah
   pre_build:
     commands:
-      - echo Checking pre-requisites with inspec.
-      - ls -lah
+      - echo Validating templates
+      - bash aws-init/ci-pre-build.sh
   build:
     commands:
-      - echo test
+      - echo Build stage
+      - bash aws-init/ci-build.sh
   post_build:
     commands:
-      - echo Validating deployment with inspec.
-      - echo Build completed on `date`
+      - echo List artifacts
+      - bash aws-init/ci-post-build.sh
