@@ -5,14 +5,14 @@ by B. Cosmin, 2020
 This is a pipeline orchestrator based 100% on AWS and git-flow. \
 By running first_time_only.sh it creates new master pipelines based on CodeBuild. \
 New Ci pipelines are created and removed based on their coresponding branches (e.g. after PRs). \
-To triger the Ci pipelines after creation, update parameters.json, run secrets.sh update and 
-push a new commit with desired version files (semver form: x.xx.xx). \
-It can be used for CI/CD pipelines for various modules like ECS, EKS, Websites, Cost Monitoring, App1, App2 etc. \
+To triger the Ci pipelines after creation, update parameters.json, run secrets.sh with \
+update parameter and push a new commit. Ci pipeline will produce new artifacts that are stored in S3. \
+This can be extended for CI/CD pipelines for various modules like ECS, EKS, Websites, Cost Monitoring, App1, App2 etc. \
 All CloudFormation parameters for any modules (except partially for aws-init) are stored in SecretsManager.
 
-aws-init is using CodeCommit to store its code and generate repos + pipelines for any modules.
+aws-init is using CodeCommit to store its code and generate repos + CD pipelines for any modules.
 
-aws-init is building the pipelines with CodePipeline and CodeBuild.
+aws-init is building the CD pipelines with CodePipeline and CodeBuild.
 
 ## This is managing:
 * CodeCommit repo for itself
