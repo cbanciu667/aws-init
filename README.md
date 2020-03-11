@@ -46,7 +46,7 @@ DEFAULT_AWS_PROFILE=MY_AWS_CLI_PROFILE\
 DEFAULT_AWS_REGION=eu-west-1\
 PROJECT_NAME=MY_PROJECT\
 MODULES=( aws-init ecs App1 App2 )\
-STAGES=( dev int prod )
+STAGES=( dev int prod )\
 
 5. clone this to env_variables but without containing DEFAULT_AWS_PROFILE
 
@@ -63,7 +63,7 @@ Example:\
   "ecs-cd-dev-version": "1.0.0",\
   "ecs-cd-int-version": "1.0.0",\
   "ecs-cd-prod-version": "1.0.0"\
-}
+}\
 
 7. run ./secrets.sh create
 
@@ -100,6 +100,7 @@ To triger module pipelines you need to commit and push to the specific module re
 
 ## How to add or remove modules and stages
 * Just add or remove the module names and stages in the MODULES/STAGES variables from env_variables,
+update SecretsManager with parameters.json, run first_time_omly.sh and after that
 commit and push
 
 ## Planned improvments in Q2 2020
