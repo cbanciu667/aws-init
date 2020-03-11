@@ -36,12 +36,13 @@ Resources:
         Location:                  
           Fn::ImportValue:
             !Sub "${ProjectName}-ci-pipeline-${ModuleName}-master-artifacts-bucket"
-        Type: S3              
+        Type: S3
+      RestartExecutionOnUpdate: true        
       Stages:
         - Name: Source
           Actions:
             - InputArtifacts: []
-              Name: ArtifactsSourceS3
+              Name: FetchArtifacts
               ActionTypeId:
                 Category: Source
                 Owner: AWS
@@ -53,8 +54,7 @@ Resources:
                 S3Bucket: 
                   Fn::ImportValue:
                     !Sub "${ProjectName}-ci-pipeline-${ModuleName}-master-artifacts-bucket"
-                PollForSourceChanges: 'true'
-                S3ObjectKey: !Join ['', [ !Sub "templates/${ModuleName}-ci-pipeline-",  !Ref Version, '.yaml' ]]
+                S3ObjectKey: !Join ['', [ !Sub "templates/${ModuleName}-cd-pipeline-artifact-",  !Ref Version, '.zip' ]]
               RunOrder: 1
         - Name: ApproveDeployment
           Actions:
@@ -84,9 +84,9 @@ Resources:
                 RoleArn: 
                   !GetAtt ModuleCdCfCodePipelineServiceRole.Arn
                 Capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
-                StackName: !Sub "${ProjectName}-testci-pipeline-${ModuleName}-${StageName}"
-                # ParameterOverrides: !Join ['', ["{ProjectName: ", !Ref ProjectName, ",ModuleName: ", !Ref ModuleName ,",BranchName: ", 'master', '}']]
-                TemplatePath: !Join ['', [ !Sub "CfTemplates::templates/${ModuleName}-ci-pipeline-", !Ref Version, '.yaml' ]]
+                StackName: !Sub "${ProjectName}-ci-dummy-test-pipeline-${ModuleName}-master"
+                ParameterOverrides: !Sub "{ProjectName: ${ProjectName}, ModuleName: ${ModuleName}, BranchName: 'master', Version: ${Version}}"
+                TemplatePath: !Sub "CfTemplates::${ModuleName}/ci-pipeline.yaml"
               RunOrder: 1
       Tags: 
         - 
@@ -190,7 +190,7 @@ Resources:
           - Effect: Allow
             Principal:
               Service:
-                - codepipeline.amazonaws.com
+                - cloudformation.amazonaws.com
             Action: 'sts:AssumeRole'
       Path: /
       Policies:
@@ -205,25 +205,23 @@ Resources:
                   - codedeploy:GetDeployment
                   - codedeploy:GetDeploymentConfig
                   - codedeploy:RegisterApplicationRevision
-                Resource: '*'
-              - Effect: Allow
-                Action:
                   - codebuild:BatchGetBuilds
                   - codebuild:StartBuild
-                Resource: '*'
-              - Effect: Allow
-                Action:
                   - lambda:InvokeFunction
                   - lambda:ListFunctions
-                Resource: '*'
-              - Effect: Allow
-                Action:
                   - s3:*Put*
                   - s3:*Get*                  
                   - s3:*Create*
                   - s3:*Update*
                   - cloudwatch:*               
                 Resource: '*'
+              - Effect: Allow                
+                Action:
+                  - iam:*
+                Resource: '*'
+                Condition:
+                    StringEquals: 
+                      "iam:ResourceTag/security": !Sub ${ProjectName}-${ModuleName}
               - Effect: Allow
                 Action:
                   - ec2:*
@@ -231,7 +229,9 @@ Resources:
                   - rds:*
                   - sqs:*
                   - ecs:*
+                  - iam:*
                   - autoscaling:*
+                  - cloudformation:*                  
                   - elasticbeanstalk:*
                   - elasticloadbalancing:*
                 Resource: '*'
