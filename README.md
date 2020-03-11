@@ -46,7 +46,7 @@ DEFAULT_AWS_PROFILE=MY_AWS_CLI_PROFILE\
 DEFAULT_AWS_REGION=eu-west-1\
 PROJECT_NAME=MY_PROJECT\
 MODULES=( aws-init ecs App1 App2 )\
-STAGES=( dev int prod )\
+STAGES=( dev int prod )
 
 5. clone this to env_variables but without containing DEFAULT_AWS_PROFILE
 
@@ -63,7 +63,7 @@ Example:\
   "ecs-cd-dev-version": "1.0.0",\
   "ecs-cd-int-version": "1.0.0",\
   "ecs-cd-prod-version": "1.0.0"\
-}\
+}
 
 7. run ./secrets.sh create
 
