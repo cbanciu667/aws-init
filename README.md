@@ -107,7 +107,7 @@ all the CF parameters via secrets, the rest is handled via code from the modules
 Be aware for the namming convention everywhere!
 
 ## How to add or remove modules and stages
-Just add the module names and stages in the MODULES & STAGES\ 
+Just add the module names and stages in the MODULES & STAGES\
 variables from local_env_variables, update SecretsManager with parameters.json,\
 run again first_time_omly.sh (First time only = first time for new mosuled & stages).\
 commit and push the new aws-init configuration.
@@ -146,7 +146,7 @@ Build phase must be completely separated from deploy phase as they could be oper
 Put in place good automated cost controls and security checks.\
 For flexibility a lambda running periodically for these pourposes should be ok.
 
-Further References:\
+## Further References:
 https://www.1strategy.com/blog/2019/02/28/aws-parameter-store-vs-aws-secrets-manager/
 https://docs.aws.amazon.com/codecommit/latest/userguide/setting-up-https-unixes.html
 https://docs.aws.amazon.com/codebuild/latest/userguide/build-spec-ref.html
