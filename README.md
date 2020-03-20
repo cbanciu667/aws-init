@@ -147,9 +147,9 @@ Put in place good automated cost controls and security checks.\
 For flexibility a lambda running periodically for these pourposes should be ok.
 
 ## Notable References:
-https://www.1strategy.com/blog/2019/02/28/aws-parameter-store-vs-aws-secrets-manager/\
-https://docs.aws.amazon.com/codecommit/latest/userguide/setting-up-https-unixes.html\
-https://docs.aws.amazon.com/codebuild/latest/userguide/build-spec-ref.html\
-https://github.com/aws/git-remote-codecommit\
-https://git-secret.io/\
-https://12factor.net/\
+* https://www.1strategy.com/blog/2019/02/28/aws-parameter-store-vs-aws-secrets-manager/
+* https://docs.aws.amazon.com/codecommit/latest/userguide/setting-up-https-unixes.html
+* https://docs.aws.amazon.com/codebuild/latest/userguide/build-spec-ref.html
+* https://github.com/aws/git-remote-codecommit
+* https://git-secret.io/
+* https://12factor.net/
