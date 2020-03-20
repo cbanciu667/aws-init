@@ -112,8 +112,8 @@ Resources:
                   - iam:UpdateRole
                   - iam:GetRolePolicy
                   - iam:DeletePolicy                  
-                  - iam:DeletePolicyVersion
-                  - secretsmanager:GetSecretValue                                 
+                  - iam:DeletePolicyVersion  
+                  - secretsmanager:GetSecretValue                                  
                 Resource: '*'
       Tags: 
         - 

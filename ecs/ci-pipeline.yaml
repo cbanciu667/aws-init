@@ -376,7 +376,7 @@ Resources:
                   - iam:DeletePolicyVersion
                   - codepipeline:UpdatePipeline
                   - codepipeline:StartPipelineExecution
-                  - codepipeline:GetPipeline                                                                      
+                  - codepipeline:GetPipeline                                                                    
                   Effect: Allow
                   Resource: '*'
         Tags: 

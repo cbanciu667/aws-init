@@ -1,4 +1,4 @@
 DEFAULT_AWS_REGION=eu-central-1
-PROJECT_NAME=bcosmin-net
-MODULES=( aws-init )
-STAGES=( dev int prod )
+PROJECT_NAME=myproject
+MODULES=( aws-init route53 ecs)
+STAGES=( dev prod )
