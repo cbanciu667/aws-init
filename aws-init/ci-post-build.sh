@@ -16,6 +16,6 @@ do
     aws cloudformation update-stack --stack-name ${PROJECT_NAME}-cd-pipeline-${MODULE}-${STAGE} \
       --template-url https://s3.amazonaws.com/${ARTIFACTS_BUCKET}/templates/${MODULE}-cd-pipeline-${CI_VERSION}.yaml \
       --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-      --parameters ParameterKey=ProjectName,UsePreviousValue=true ParameterKey=ModuleName,UsePreviousValue=true ParameterKey=StageName,UsePreviousValue=true ParameterKey=Version,ParameterValue=${CI_VERSION} ParameterKey=RandomParameter,ParameterValue=$RANDOM
+      --parameters ParameterKey=ProjectName,UsePreviousValue=true ParameterKey=ModuleName,UsePreviousValue=true ParameterKey=StageName,ParameterValue=${STAGE} ParameterKey=Version,UsePreviousValue=true ParameterKey=RandomParameter,ParameterValue=$RANDOM
   done
 done

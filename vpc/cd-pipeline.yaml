@@ -23,7 +23,6 @@ Parameters:
     Default: 1.0.0
 
 Resources:
-      
 # CodePipeline
 # Role and permissions used by the CF deploy step in the CD pipeline
 #            
@@ -112,7 +111,8 @@ Resources:
                   - iam:UpdateRole
                   - iam:GetRolePolicy
                   - iam:DeletePolicy                  
-                  - iam:DeletePolicyVersion                  
+                  - iam:DeletePolicyVersion
+                  - secretsmanager:GetSecretValue                                 
                 Resource: '*'
       Tags: 
         - 
@@ -270,7 +270,7 @@ Resources:
                 Capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
                 StackName: !Sub "${ProjectName}-${ModuleName}-${StageName}"
                 ParameterOverrides: !Sub '{"ProjectName": "${ProjectName}","StageName": "${StageName}","ModuleName": "${ModuleName}"}'
-                TemplatePath: !Sub "CfTemplates::route53.yaml"
+                TemplatePath: !Sub "CfTemplates::vpc.yaml"
               RunOrder: 1
       Tags: 
         - 

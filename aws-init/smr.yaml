@@ -1,0 +1,53 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Secrets Manager Requester for custom resources"
+
+Resources:
+# Lambda
+# Role and permissions used by the SecretsManagerRequester lambda function
+# 
+  SecretsManagerRequesterLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-SMRL-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /        
+      Policies:
+        - PolicyName: !Sub ${AWS::StackName}-smrl-policy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - secretsmanager:GetSecretValue             
+                Resource: '*'
+
+# Lambda
+# SecretsManager requester for custom resources
+#
+  SecretsManagerRequester:
+    DependsOn: SecretsManagerRequesterLambdaRole
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-SMR
+      Handler: smr.lambda_handler
+      Role: !GetAtt SecretsManagerRequesterLambdaRole.Arn
+      Runtime: python3.7
+      Timeout: 25
+      Code: ./code/secrets-manager-requester/.
+
+Outputs:
+  SmrArn:
+    Description: The ARN for the SMR lambda
+    Value: !GetAtt SecretsManagerRequester.Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-SmrArn

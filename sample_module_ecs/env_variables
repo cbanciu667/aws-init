@@ -1,4 +1,4 @@
 DEFAULT_AWS_REGION=eu-central-1
 PROJECT_NAME=myproject
-MODULES=( aws-init route53 vpc ecs)
+MODULE=ecs
 STAGES=( dev prod )

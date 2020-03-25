@@ -47,7 +47,7 @@ DEFAULT_AWS_PROFILE=MY_AWS_CLI_PROFILE\
 DEFAULT_AWS_REGION=eu-west-1\
 PROJECT_NAME=MY_PROJECT\
 MODULES=( aws-init ecs App1 App2 )\
-STAGES=( dev int prod )
+STAGES=( dev int prod )\
 
 5. clone this to env_variables but without containing DEFAULT_AWS_PROFILE
 
@@ -60,14 +60,20 @@ Example:\
   "aws-init-cd-dev-version": "1.0.0",\
   "aws-init-cd-int-version": "1.0.0",\
   "aws-init-cd-prod-version": "1.0.0",\
+  "vpc-ci-version": "1.0.0",\
+  "vpc-cd-dev-version": "1.0.0",\
+  "vpc-cd-int-version": "1.0.0",\  
+  "vpc-cd-prod-version": "1.0.0",\  
+  "vpc-cidr": "10.10.0.0/23",\    
+  "ecs-ci-version": "1.0.0",\  
   "ecs-cd-dev-version": "1.0.0",\
   "ecs-cd-int-version": "1.0.0",\
-  "ecs-cd-prod-version": "1.0.0"\
+  "ecs-cd-prod-version": "1.0.0",\
   "route53-cd-dev-version": "1.0.0",\
   "route53-cd-int-version": "1.0.0",\
   "route53-cd-prod-version": "1.0.0",\  
   "route53-domain-name": "domain.com"\    
-}
+}\
 
 7. run ./secrets.sh create
 
@@ -84,7 +90,8 @@ https://git-secret.io/
 
 12. git commit on master branch
 
-ATENTION: this will triger only generate the master pipelinesand it will not triger any module pipeline for deployments.\
+ATENTION: this will triger only generate the master pipelines\
+It will not triger any module pipeline for deployments.\
 To triger module pipelines you need to commit and push to the specific module repo including buildspec.yml and other elements.
 
 
@@ -100,21 +107,28 @@ To triger module pipelines you need to commit and push to the specific module re
 * trigger cd pipeline in code pipeline
 * repeat
 
-* IMPORTANT: 
+* IMPORTANT:\ 
 make sure git-secret is working properly as this is critical for operation!\
 AWS-INIT modules is made only to orchestrate the CI/CD pipelines and manage,\
 all the CF parameters via secrets, the rest is handled via code from the modules CodeCommit repos!\
 Be aware for the namming convention everywhere!
 
 ## How to add or remove modules and stages
-Just add the module names and stages in the MODULES & STAGES\
-variables from local_env_variables, update SecretsManager with parameters.json,\
+* Just add the module names and stages in the MODULES & STAGES\ 
+variables from local_env_variables, update SecretsManager with parameters.json,\ 
 run again first_time_omly.sh (First time only = first time for new mosuled & stages).\
 commit and push the new aws-init configuration.
 
 After that step used the output of first_time_omly.sh to add the repos for the modules.\
 For each module copy in its repo and commit the aws ./aws-init configuration.\
 Adapt it and use it for that module.
+
+## SMR Lambda in the aws-init Ci pipeline
+This is also a central piece of the aws-init configuration.\
+Secrets Manager Requester Lambda acts as a proxy between CF stacks and Secrets Manager.\
+Why ? Because even if querying secrets directly from SM works fine in most cases,\
+for some resource properties it doesn't work at the moment (e.g. Domain Zone Name property) or\
+when using direct query with !Cidr functions.
 
 ## Planned improvments in Q2 2020
 * Delete features for pipelines
@@ -124,32 +138,32 @@ Adapt it and use it for that module.
 
 ## Aditional Information
 The scope of this project is to demonstrate how to setup a 100% AWS CI/CD pipeline.\
-Similar could be easily setup in Gitlab, Jenkins or Bitbucket Pipelines but what matters here\
+Similar could be easily setup in Gitlab, Jenkins or Bitbucket Pipelines but what matters here\ 
 are the DevOps principles on which this sample project is based:
 
-Most cloud formation parameters and other variables are hidden in AWS Secret Manager,\
-solving the dilemma of what is a secret and what not.\
-Many of the parameters used in a pipeline "could be a secret" giving hints to\
+Most cloud formation parameters and other variables are hidden in AWS Secret Manager,\ 
+solving the dilemma of what is a secret and what not.\ 
+Many of the parameters used in a pipeline "could be a secret" giving hints to \
 a possible attacker about your infrastructure. Therefore better be safe and obfuscate almost all.\
-Aws Secrets Manager gives you several operational advantages even when compared to\
+Aws Secrets Manager gives you several operational advantages even when compared to\ 
 AWS Parameter Store (e.g. loading all project secrets in one json ).
 
-Tried to parametrize everything, the only differences beying the above parameters for the\
+Tried to parametrize everything, the only differences beying the above parameters for the\ 
 scripts. Less values are hardcoded, the better. Optimally no parameters or variable is hardcoded.\
 All resource names should be dynamic and based on given parameters.
 
-Everything must be versioned and commits easy to understand. Therefore commit often,\
+Everything must be versioned and commits easy to understand. Therefore commit often,\ 
 with good descriptions and versioned artifacts.
 
 Build phase must be completely separated from deploy phase as they could be operated by separated teams at different dates.
 
-Put in place good automated cost controls and security checks.\
+Put in place good automated cost controls and security checks.\ 
 For flexibility a lambda running periodically for these pourposes should be ok.
 
-## Notable References:
-* https://www.1strategy.com/blog/2019/02/28/aws-parameter-store-vs-aws-secrets-manager/
-* https://docs.aws.amazon.com/codecommit/latest/userguide/setting-up-https-unixes.html
-* https://docs.aws.amazon.com/codebuild/latest/userguide/build-spec-ref.html
-* https://github.com/aws/git-remote-codecommit
-* https://git-secret.io/
-* https://12factor.net/
+Further References:\
+https://www.1strategy.com/blog/2019/02/28/aws-parameter-store-vs-aws-secrets-manager/
+https://docs.aws.amazon.com/codecommit/latest/userguide/setting-up-https-unixes.html
+https://docs.aws.amazon.com/codebuild/latest/userguide/build-spec-ref.html
+https://github.com/aws/git-remote-codecommit
+https://git-secret.io/
+https://12factor.net/

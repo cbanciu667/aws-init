@@ -112,8 +112,7 @@ Resources:
                   - iam:UpdateRole
                   - iam:GetRolePolicy
                   - iam:DeletePolicy                  
-                  - iam:DeletePolicyVersion 
-                  - secretsmanager:GetSecretValue                                   
+                  - iam:DeletePolicyVersion                  
                 Resource: '*'
       Tags: 
         - 
@@ -269,9 +268,9 @@ Resources:
                 RoleArn: 
                   !GetAtt ModuleCdCfCodePipelineServiceRole.Arn
                 Capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
-                StackName: !Sub "${ProjectName}-ci-pipeline-${ModuleName}-master"
-                ParameterOverrides: !Sub '{"ProjectName": "${ProjectName}","ModuleName": "${ModuleName}","BranchName": "master","Version": "${Version}"}'
-                TemplatePath: !Sub "CfTemplates::${ModuleName}/ci-pipeline.yaml"
+                StackName: !Sub "${ProjectName}-${ModuleName}-${StageName}"
+                ParameterOverrides: !Sub '{"ProjectName": "${ProjectName}","StageName": "${StageName}","ModuleName": "${ModuleName}"}'
+                TemplatePath: !Sub "CfTemplates::ecs.yaml"
               RunOrder: 1
       Tags: 
         - 

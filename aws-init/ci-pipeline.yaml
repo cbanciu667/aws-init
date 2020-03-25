@@ -200,7 +200,7 @@ Resources:
           Value: !Ref ModuleName
         - 
           Key: 'security'
-          Value: !Sub ${ProjectName}-${ModuleName}                  
+          Value: !Sub ${ProjectName}-${ModuleName}
 # Lambda
 # Pipelines management lambda function
 #
@@ -328,10 +328,15 @@ Resources:
                   - cloudwatch:*Put*
                   - cloudwatch:*Get*                    
                   - cloudwatch:*Set*
+                  - cloudformation:*Create*
+                  - cloudformation:*Execute*
                   - cloudformation:*List*
                   - cloudformation:*Describe*
                   - cloudformation:*Get*
-                  - cloudformation:*Update*                  
+                  - cloudformation:*Update*
+                  - lambda:*Get*
+                  - lambda:*Create*
+                  - lambda:*Update*
                   - cloudwatch:*Set*
                   - cloudformation:ValidateTemplate                                                 
                   - secretsmanager:GetSecretValue
