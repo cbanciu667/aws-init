@@ -734,8 +734,8 @@ Resources:
           Value: !Sub ${ProjectName}-${ModuleName}-${StageName}   
       SecurityGroupIngress:
         - IpProtocol: udp
-          FromPort: '1399'
-          ToPort: '1399'
+          FromPort: '1400'
+          ToPort: '1400'
           CidrIp: 0.0.0.0/0
 
   vpcInternal:
