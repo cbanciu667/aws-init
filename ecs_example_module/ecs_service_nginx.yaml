@@ -1,0 +1,245 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Nginx service running on ECS
+
+Parameters:
+  ProjectName:
+    Description: Project name
+    Type: String
+  ModuleName:
+    Description: Module name
+    Type: String    
+  StageName:
+    Description: Stage name
+    Type: String
+
+Conditions:
+  ProdStage: !Equals
+    - !Ref 'StageName'
+    - 'prod'
+
+Resources:
+  DomainCustomResource:
+    Type: "Custom::SmDomain"
+    Properties:
+      ServiceToken: 
+        Fn::ImportValue: 
+          !Sub "${ProjectName}-SMR-lambda-SmrArn"
+      secretname: !Ref ProjectName
+      secretvalue: 'route53-domain-name'   
+
+  ListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+        ListenerArn:
+          Fn::ImportValue:
+            !Sub "${ProjectName}-${ModuleName}-${StageName}-Alb-EcsAlbListener"
+        Priority: 1
+        Conditions:
+            - Field: host-header
+              Values:
+                - !If
+                  - ProdStage
+                  - !Sub
+                    - "nginx.${Domain}"
+                    - { Domain: !GetAtt DomainCustomResource.Response }
+                  - !Sub
+                    - "nginx.${StageName}.${Domain}"
+                    - { Domain: !GetAtt DomainCustomResource.Response }
+        Actions:
+            - TargetGroupArn: 
+                Fn::ImportValue:
+                  !Sub "${ProjectName}-${ModuleName}-${StageName}-Alb-TargetGroup"
+              Type: forward
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: ListenerRule
+    Properties:
+        Cluster: 
+          Fn::ImportValue:
+            !Sub "${ProjectName}-${ModuleName}-${StageName}-EcsCluster"
+        Role: !Ref ServiceRole
+        DesiredCount: 1
+        TaskDefinition: !Ref TaskDefinition
+        HealthCheckGracePeriodSeconds: 120
+        LoadBalancers:
+            - ContainerName: nginx
+              ContainerPort: 80
+              TargetGroupArn: 
+                Fn::ImportValue:
+                  !Sub "${ProjectName}-${ModuleName}-${StageName}-Alb-TargetGroup"
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+        Family: nginx
+        ContainerDefinitions:
+            - Name: nginx
+              Essential: true
+              Image: nginx
+              Memory: 256
+              Environment:
+                - Name: AWS_REGION
+                  Value: !Ref AWS::Region
+              PortMappings:
+                - ContainerPort: 80
+                  HostPort: 80
+              LogConfiguration:
+                LogDriver: awslogs
+                Options:
+                    awslogs-group: !Ref AWS::StackName
+                    awslogs-region: !Ref AWS::Region
+
+  CloudWatchLogsGroup:
+      Type: AWS::Logs::LogGroup
+      Properties:
+          LogGroupName: !Ref AWS::StackName
+          RetentionInDays: 3
+
+  ServiceRole:
+      Type: AWS::IAM::Role
+      Properties:
+          RoleName: !Sub ${AWS::StackName}-nginx-EcsRole
+          Path: /
+          AssumeRolePolicyDocument: |
+              {
+                  "Statement": [{
+                      "Effect": "Allow",
+                      "Principal": { "Service": [ "ecs.amazonaws.com" ]},
+                      "Action": [ "sts:AssumeRole" ]
+                  }]
+              }
+          Policies:
+              -
+                PolicyName: !Sub ${AWS::StackName}-nginx-pol
+                PolicyDocument:
+                  Version: 2012-10-17
+                  Statement:
+                      -
+                        Effect: Allow
+                        Action:
+                            - "ec2:AuthorizeSecurityGroupIngress"
+                            - "ec2:Describe*"
+                            - "elasticloadbalancing:DeregisterInstancesFromLoadBalancer"
+                            - "elasticloadbalancing:Describe*"
+                            - "elasticloadbalancing:RegisterInstancesWithLoadBalancer"
+                            - "elasticloadbalancing:DeregisterTargets"
+                            - "elasticloadbalancing:DescribeTargetGroups"
+                            - "elasticloadbalancing:DescribeTargetHealth"
+                            - "elasticloadbalancing:RegisterTargets"
+                        Resource: "*"
+
+  ServiceScalableTarget:
+      Type: "AWS::ApplicationAutoScaling::ScalableTarget"
+      Properties:
+          MaxCapacity: 6
+          MinCapacity: 1
+          ResourceId: !Join
+              - /
+              - - service
+                - Fn::ImportValue:
+                    !Sub "${ProjectName}-${ModuleName}-${StageName}-EcsCluster"
+                - !GetAtt Service.Name
+          RoleARN: 
+            !ImportValue
+              Fn::Sub: "${ProjectName}-${ModuleName}-${StageName}-EcsAsgRole"
+          ScalableDimension: ecs:service:DesiredCount
+          ServiceNamespace: ecs
+
+  ServiceScaleOutPolicy:
+      Type : "AWS::ApplicationAutoScaling::ScalingPolicy"
+      Properties:
+          PolicyName: !Sub "${StageName}-nginx-serviceScaleOutPolicy"
+          PolicyType: StepScaling
+          ScalingTargetId: !Ref ServiceScalableTarget
+          StepScalingPolicyConfiguration:
+              AdjustmentType: ChangeInCapacity
+              Cooldown: 1800
+              MetricAggregationType: Average
+              StepAdjustments:
+              - MetricIntervalLowerBound: 0
+                ScalingAdjustment: 1
+
+  ServiceScaleInPolicy:
+      Type : "AWS::ApplicationAutoScaling::ScalingPolicy"
+      Properties:
+          PolicyName: !Sub "${StageName}-nginx-serviceScaleInPolicy"
+          PolicyType: StepScaling
+          ScalingTargetId: !Ref ServiceScalableTarget
+          StepScalingPolicyConfiguration:
+              AdjustmentType: ChangeInCapacity
+              Cooldown: 1800
+              MetricAggregationType: Average
+              StepAdjustments:
+              - MetricIntervalUpperBound: 0
+                ScalingAdjustment: -1
+
+  CPUScaleOutAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+          AlarmName: !Sub "${StageName}-nginx CPU utilization greater than 90%"
+          AlarmDescription: Alarm if cpu utilization greater than 90% of reserved cpu
+          Namespace: AWS/ECS
+          MetricName: CPUUtilization
+          Dimensions:
+          - Name: ClusterName
+            Value: 
+              Fn::ImportValue:
+                !Sub "${ProjectName}-${ModuleName}-${StageName}-EcsCluster"
+          - Name: ServiceName
+            Value: !GetAtt Service.Name
+          Statistic: Maximum
+          Period: '60'
+          EvaluationPeriods: '3'
+          Threshold: '90'
+          ComparisonOperator: GreaterThanThreshold
+          AlarmActions:
+          - !Ref ServiceScaleOutPolicy
+
+  CPUScaleInAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+          AlarmName: !Sub "${StageName}-nginx CPU utilization less than 70%"
+          AlarmDescription: Alarm if cpu utilization greater than 70% of reserved cpu
+          Namespace: AWS/ECS
+          MetricName: CPUUtilization
+          Dimensions:
+          - Name: ClusterName
+            Value:
+              Fn::ImportValue:
+                !Sub "${ProjectName}-${ModuleName}-${StageName}-EcsCluster"
+          - Name: ServiceName
+            Value: !GetAtt Service.Name
+          Statistic: Maximum
+          Period: '60'
+          EvaluationPeriods: '10'
+          Threshold: '70'
+          ComparisonOperator: LessThanThreshold
+          AlarmActions:
+          - !Ref ServiceScaleInPolicy
+
+  DNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !If
+        - ProdStage
+        - Fn::ImportValue: aws-dns-HostedZone
+        - Fn::ImportValue: 
+            !Sub aws-${StageName}-dns-HostedZone
+      Name: !If
+        - ProdStage
+        - !Sub
+          - nginx.${Domain}
+          - { Domain: !GetAtt DomainCustomResource.Response }
+        - !Sub
+          - nginx.${StageName}.${Domain}
+          - { Domain: !GetAtt DomainCustomResource.Response }
+      Type: A
+      AliasTarget:      
+        DNSName: !Join
+          - ''
+          - - dualstack.
+            - Fn::ImportValue:
+                !Sub "${ProjectName}-${ModuleName}-${StageName}-Alb-AlbUrl"
+            - .
+        HostedZoneId: 
+          Fn::ImportValue:
+            !Sub "${ProjectName}-${ModuleName}-${StageName}-Alb-EcsAlbDnsZone"

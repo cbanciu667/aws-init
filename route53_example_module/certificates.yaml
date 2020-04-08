@@ -1,0 +1,73 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ACM Certificates
+
+Parameters:
+  ProjectName:
+    Description: Name for the current project
+    Type: String
+  ModuleName:
+    Description: Stage name
+    Type: String    
+  StageName:
+    Description: Stage name
+    Type: String
+
+Conditions:
+  ProdStage: !Equals [!Ref StageName, 'prod']
+
+Resources:
+# custom domain resource
+  DomainCustomResource:
+    Type: "Custom::SmDomain"
+    Properties:
+      ServiceToken: 
+        Fn::ImportValue:
+          !Sub "${ProjectName}-SMR-lambda-SmrArn"
+      secretname: !Ref ProjectName
+      secretvalue: 'route53-domain-name' 
+# Project wide wildcard certificate       
+  ProjectWildcardCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !If
+          - ProdStage
+          - !Sub
+            - "${Domain}"
+            - { Domain: !GetAtt DomainCustomResource.Response }
+          - !Sub
+            - "${StageName}.${Domain}"
+            - { Domain: !GetAtt DomainCustomResource.Response }
+      SubjectAlternativeNames:
+                  - !If
+                    - ProdStage
+                    - !Sub
+                      - "*.${Domain}"
+                      - { Domain: !GetAtt DomainCustomResource.Response }
+                    - !Sub
+                      - "*.${StageName}.${Domain}"
+                      - { Domain: !GetAtt DomainCustomResource.Response }
+      ValidationMethod: DNS
+      DomainValidationOptions:
+            - DomainName: !If
+                  - ProdStage
+                  - !Sub
+                    - "*.${Domain}"
+                    - { Domain: !GetAtt DomainCustomResource.Response }
+                  - !Sub
+                    - "*.${StageName}.${Domain}"
+                    - { Domain: !GetAtt DomainCustomResource.Response }
+              ValidationDomain: !If
+                  - ProdStage
+                  - !Sub
+                    - "${Domain}"
+                    - { Domain: !GetAtt DomainCustomResource.Response }
+                  - !Sub
+                    - "${StageName}.${Domain}"
+                    - { Domain: !GetAtt DomainCustomResource.Response }
+
+Outputs:
+  Certificate:
+    Description: Certificate ARN
+    Value: !Ref ProjectWildcardCertificate
+    Export:
+      Name: !Sub ${AWS::StackName}-certificate

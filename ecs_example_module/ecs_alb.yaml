@@ -1,0 +1,136 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: ALB for ECS services
+
+Parameters:
+  ProjectName:
+    Description: Project name
+    Type: String
+  ModuleName:
+    Description: Module name
+    Type: String    
+  StageName:
+    Description: Stage name
+    Type: String
+
+Resources:
+  EcsSecurityGroupUpdateinbound:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG for the Ecs services
+      VpcId: 
+        Fn::ImportValue:
+          !Sub ${ProjectName}-vpc-${StageName}-Vpc
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0
+
+  EcsLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      IpAddressType: ipv4
+      Scheme: internet-facing
+      SecurityGroups: 
+        - !Ref EcsSecurityGroupUpdateinbound
+      Subnets: 
+        - Fn::ImportValue:
+            !Sub "${ProjectName}-vpc-${StageName}-PublicSubnet1A"
+        - Fn::ImportValue:
+            !Sub "${ProjectName}-vpc-${StageName}-PublicSubnet1B"
+        - Fn::ImportValue:
+            !Sub "${ProjectName}-vpc-${StageName}-PublicSubnet1C"            
+      Tags: 
+        - Key: 'scope'
+          Value: !Ref ProjectName
+        - Key: 'module'
+          Value: !Ref ModuleName
+        - Key: 'stage'
+          Value: !Ref StageName
+        - Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}-${StageName}
+        - Key: Name
+          Value: !Sub ${ProjectName}-${StageName}-ECS-Alb
+
+  EcsLoadBalancerListenerHTTPS:
+      Type: AWS::ElasticLoadBalancingV2::Listener
+      Properties:
+          LoadBalancerArn: !Ref EcsLoadBalancer
+          Port: 443
+          Protocol: HTTPS
+          Certificates:
+            - CertificateArn: 
+                  Fn::ImportValue:
+                    !Sub ${ProjectName}-route53-prod-certs-certificate
+          DefaultActions:
+              - Type: forward
+                TargetGroupArn: !Ref EcsTargetGroupHTTP
+
+  EcsLoadBalancerListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref EcsLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+      - Type: redirect 
+        RedirectConfig:
+          Protocol: HTTPS
+          StatusCode: HTTP_301
+          Port: 443
+
+  EcsTargetGroupHTTP:
+      Type: AWS::ElasticLoadBalancingV2::TargetGroup
+      Properties:
+          VpcId: 
+            Fn::ImportValue:
+              !Sub ${ProjectName}-vpc-${StageName}-Vpc
+          Port: 80
+          Protocol: HTTP
+          HealthCheckPort: 80
+          HealthCheckPath: /
+          HealthCheckProtocol: HTTP
+          HealthCheckTimeoutSeconds: 5
+          HealthCheckIntervalSeconds: 7
+          HealthyThresholdCount: 2
+          UnhealthyThresholdCount: 3
+          Matcher:
+            HttpCode: 200
+          TargetGroupAttributes:
+            - Key: deregistration_delay.timeout_seconds
+              Value: '10'
+
+Outputs:
+  EcsLoadBalancer:
+      Description: A reference to the Application Load Balancer
+      Value: !Ref EcsLoadBalancer
+      Export:
+            Name: !Sub ${AWS::StackName}-Alb
+
+  LoadBalancerUrl:
+      Description: The URL of the LoadBalancer
+      Value: !GetAtt EcsLoadBalancer.DNSName
+      Export:
+            Name: !Sub ${AWS::StackName}-AlbUrl
+
+  Listener:
+      Description: A reference to a port 80 listener
+      Value: !Ref EcsLoadBalancerListenerHTTP  
+      Export:
+            Name: !Sub ${AWS::StackName}-EcsAlbListener
+
+  EcsAlbDnsZone:
+      Description: A reference to Alb Canonical Zone
+      Value: !GetAtt 'EcsLoadBalancer.CanonicalHostedZoneID'  
+      Export:
+            Name: !Sub ${AWS::StackName}-EcsAlbDnsZone
+    
+  TargetGroup:
+      Description: A reference to the target group
+      Value: !Ref EcsTargetGroupHTTP  
+      Export:
+            Name: !Sub ${AWS::StackName}-TargetGroup           

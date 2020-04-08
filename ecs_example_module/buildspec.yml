@@ -1,0 +1,21 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - echo Installing dependencies and listing repo content
+      - ls -lah
+  pre_build:
+    commands:
+      - echo Validating templates
+      - aws cloudformation validate-template --template-body file://ecs.yaml
+      - aws cloudformation validate-template --template-body file://ecs_alb.yaml      
+      - aws cloudformation validate-template --template-body file://ecs_service_nginx.yaml      
+  build:
+    commands:
+      - echo Build stage
+      - bash ci-build.sh
+  post_build:
+    commands:
+      - echo List artifacts
+      - bash ci-post-build.sh

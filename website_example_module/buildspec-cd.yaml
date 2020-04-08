@@ -1,0 +1,14 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - echo Listing artifact content
+      - ls -lah
+  pre_build:
+    commands:
+      - echo Validating templates
+      - aws cloudformation validate-template --template-body file://website.yaml
+  build:
+    commands:
+      - bash cd-deploy.sh ${STAGE_NAME}

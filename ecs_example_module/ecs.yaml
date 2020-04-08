@@ -1,0 +1,500 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: ECS Cluster stack
+
+Parameters:
+  ProjectName:
+    Description: Project name
+    Type: String
+  ModuleName:
+    Description: Module name
+    Type: String    
+  StageName:
+    Description: Stage name
+    Type: String
+
+Conditions:
+  StageIsProd: !Equals
+    - !Ref 'StageName'
+    - 'prod'
+
+Mappings:
+    # These are the latest ECS optimized AMIs as of Feb 2020:
+    #
+    # You can find the latest available on this page of our documentation:
+    # http://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-optimized_AMI.html
+    # (note the AMI identifier is region specific)
+
+    AWSRegionToAMI:
+        us-east-2:
+            AMI: ami-044bf85e844eddde5
+        us-east-1:
+            AMI: ami-00f69adbdc780866c
+        us-west-2:
+            AMI: ami-088dbc54f17f8a1a2
+        us-west-1:
+            AMI: ami-014ee82610857fa9a
+        eu-west-3:
+            AMI: ami-0b700aef0f223def9
+        eu-west-2:
+            AMI: ami-03ec263c71e44528d
+        eu-west-1:
+            AMI: ami-09cec0d91e6d220ea
+        eu-central-1:
+            AMI: ami-0fe4cfe8d04ec091e
+
+Resources:
+# Custom resources for Secrets Manager Pooling
+  AlarmingEmailCustomResource:
+    Type: "Custom::SmDomain"
+    Properties:
+      ServiceToken: 
+        Fn::ImportValue:
+          !Sub "${ProjectName}-SMR-lambda-SmrArn"
+      secretname: !Ref ProjectName
+      secretvalue: 'alarming-email'
+
+  RootVolSizeCustomResource:
+    Type: "Custom::SmDomain"
+    Properties:
+      ServiceToken: 
+        Fn::ImportValue:
+          !Sub "${ProjectName}-SMR-lambda-SmrArn"
+      secretname: !Ref ProjectName
+      secretvalue: 'ecs-root-volume-size'
+
+  DataVolSizeCustomResource:
+    Type: "Custom::SmDomain"
+    Properties:
+      ServiceToken: 
+        Fn::ImportValue:
+          !Sub "${ProjectName}-SMR-lambda-SmrArn"
+      secretname: !Ref ProjectName
+      secretvalue: 'ecs-data-volume-size'
+
+  MinSizeCustomResource:
+    Type: "Custom::SmDomain"
+    Properties:
+      ServiceToken: 
+        Fn::ImportValue:
+          !Sub "${ProjectName}-SMR-lambda-SmrArn"
+      secretname: !Ref ProjectName
+      secretvalue: !Sub 'ecs-min-size-${StageName}'
+
+  MaxSizeCustomResource:
+    Type: "Custom::SmDomain"
+    Properties:
+      ServiceToken: 
+        Fn::ImportValue:
+          !Sub "${ProjectName}-SMR-lambda-SmrArn"
+      secretname: !Ref ProjectName
+      secretvalue: !Sub 'ecs-max-size-${StageName}'
+
+  DesiredSizeCustomResource:
+    Type: "Custom::SmDomain"
+    Properties:
+      ServiceToken: 
+        Fn::ImportValue:
+          !Sub "${ProjectName}-SMR-lambda-SmrArn"
+      secretname: !Ref ProjectName
+      secretvalue: !Sub 'ecs-desired-size-${StageName}'
+
+  AlarmEmailNotification:
+    Type: AWS::SNS::Topic
+    DependsOn: AlarmingEmailCustomResource
+    Properties:
+      Subscription:
+      - Endpoint: !GetAtt AlarmingEmailCustomResource.Response
+        Protocol: email
+
+  FileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+        FileSystemTags:
+          - Key: Name
+            Value: !Sub ${AWS::StackName}-efs
+
+  MountTargetA:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref FileSystem
+      SecurityGroups:
+          - Fn::ImportValue:
+              !Sub "${ProjectName}-vpc-${StageName}-vpcInternal"
+      SubnetId:
+          Fn::ImportValue:
+            !Sub "${ProjectName}-vpc-${StageName}-PrivateSubnet1A"
+
+  MountTargetB:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref FileSystem
+      SecurityGroups:
+          - Fn::ImportValue:
+              !Sub "${ProjectName}-vpc-${StageName}-vpcInternal"
+      SubnetId:
+          Fn::ImportValue:
+            !Sub "${ProjectName}-vpc-${StageName}-PrivateSubnet1B"
+
+  MountTargetC:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref FileSystem
+      SecurityGroups:
+          - Fn::ImportValue:
+              !Sub "${ProjectName}-vpc-${StageName}-vpcInternal"
+      SubnetId:
+          Fn::ImportValue:
+            !Sub "${ProjectName}-vpc-${StageName}-PrivateSubnet1C"
+
+  ECSServiceAutoScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+        AssumeRolePolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+                Action:
+                - 'sts:AssumeRole'
+                Effect: Allow
+                Principal:
+                    Service:
+                    - application-autoscaling.amazonaws.com
+        Path: /
+        Policies:
+        - PolicyName: ecs-service-autoscaling
+          PolicyDocument:
+              Statement:
+                  Effect: Allow
+                  Action:
+                  - application-autoscaling:*
+                  - cloudwatch:DescribeAlarms
+                  - cloudwatch:PutMetricAlarm
+                  - ecs:DescribeServices
+                  - ecs:UpdateService
+                  Resource: "*"
+
+  ECSInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/CloudWatchAgentAdminPolicy'
+      Path: /
+      RoleName: !Sub ${AWS::StackName}-ecsrl
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+      Policies:
+        - PolicyName: !Sub ${AWS::StackName}-ecspol
+          PolicyDocument:
+            Statement:
+              Effect: Allow
+              Action:
+                - ecs:CreateCluster
+                - ecs:DeregisterContainerInstance
+                - ecs:DiscoverPollEndpoint
+                - ecs:Poll
+                - ecs:RegisterContainerInstance
+                - ecs:StartTelemetrySession
+                - ecs:Submit*
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+                - ecr:BatchCheckLayerAvailability
+                - ecr:BatchGetImage
+                - ecr:GetDownloadUrlForLayer
+                - ecr:GetAuthorizationToken
+                - ec2messages:AcknowledgeMessage
+                - ec2messages:DeleteMessage
+                - ec2messages:FailMessage
+                - ec2messages:GetEndpoint
+                - ec2messages:GetMessages
+                - ec2messages:SendReply
+                - ec2:DescribeInstanceStatus
+                - ds:CreateComputer
+                - ds:DescribeDirectories
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:DescribeLogGroups
+                - logs:DescribeLogStreams
+                - logs:PutLogEvents
+                - s3:PutObject
+                - s3:GetObject
+                - s3:AbortMultipartUpload
+                - s3:ListMultipartUploadParts
+                - s3:ListBucket
+                - s3:ListBucketMultipartUploads
+                - servicediscovery:*
+                - route53:CreateHealthCheck
+                - route53:GetHostedZone
+                - route53:ChangeResourceRecordSets
+                - route53:List*
+                - route53:GetHealthCheck
+                - route53:UpdateHealthCheck
+                - cloudwatch:*Put*
+                - dynamodb:*
+              Resource:
+                - '*'
+
+  ECSInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref ECSInstanceRole
+
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+        ClusterName: !Sub ${ProjectName}-${StageName}-EcsCls
+
+  ECSAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+        VPCZoneIdentifier:
+          - Fn::ImportValue:
+              !Sub "${ProjectName}-vpc-${StageName}-PrivateSubnet1A"
+          - Fn::ImportValue:
+              !Sub "${ProjectName}-vpc-${StageName}-PrivateSubnet1B"
+          - Fn::ImportValue:
+              !Sub "${ProjectName}-vpc-${StageName}-PrivateSubnet1C"                                    
+        LaunchConfigurationName: !Ref ECSLaunchConfiguration
+        MinSize: !GetAtt MinSizeCustomResource.Response
+        MaxSize: !GetAtt MaxSizeCustomResource.Response
+        DesiredCapacity: !GetAtt DesiredSizeCustomResource.Response
+        Tags: 
+          - Key: 'scope'
+            Value: !Ref ProjectName
+            PropagateAtLaunch: true
+          - Key: 'module'
+            Value: !Ref ModuleName
+            PropagateAtLaunch: true            
+          - Key: 'stage'
+            Value: !Ref StageName
+            PropagateAtLaunch: true            
+          - Key: 'security'
+            Value: !Sub ${ProjectName}-${ModuleName}-${StageName}
+            PropagateAtLaunch: true            
+          - Key: Name
+            Value: !Sub ${ProjectName}-${StageName}-ECS-host
+            PropagateAtLaunch: true
+    CreationPolicy:
+        ResourceSignal:
+            Timeout: PT15M
+    UpdatePolicy:
+        AutoScalingRollingUpdate:
+            MinInstancesInService: 1
+            MaxBatchSize: 1
+            PauseTime: PT15M
+            SuspendProcesses:
+              - HealthCheck
+              - ReplaceUnhealthy
+              - AZRebalance
+              - AlarmNotification
+              - ScheduledActions
+            WaitOnResourceSignals: true
+
+  ECSLaunchConfiguration:
+      Type: AWS::AutoScaling::LaunchConfiguration
+      Properties:
+          ImageId:  !FindInMap [AWSRegionToAMI, !Ref "AWS::Region", AMI]
+          InstanceType: !Sub '{{resolve:secretsmanager:${ProjectName}:SecretString:ecs-instance-type-${StageName}}}'
+          SecurityGroups: 
+            - Fn::ImportValue:
+                !Sub "${ProjectName}-vpc-${StageName}-vpcInternal"
+          IamInstanceProfile: !Ref ECSInstanceProfile
+          KeyName: !Sub '{{resolve:secretsmanager:${ProjectName}:SecretString:ecs-ssh-key}}'
+          BlockDeviceMappings:
+          - DeviceName: "/dev/xvda"
+            Ebs:
+              VolumeSize: !GetAtt RootVolSizeCustomResource.Response
+              VolumeType: gp2
+          - DeviceName: "/dev/xvdcz"
+            Ebs:
+              VolumeSize: !GetAtt DataVolSizeCustomResource.Response
+              VolumeType: gp2
+          UserData:
+              "Fn::Base64": !Sub |
+                  #!/bin/bash
+                  yum update -y
+                  yum install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
+                  yum install -y aws-cfn-bootstrap hibagent nfs-utils perl-Switch perl-DateTime perl-Sys-Syslog perl-LWP-Protocol-https perl-Digest-SHA.x86_64 unzip nano jq wget python-pip awslogs
+                  /usr/bin/enable-ec2-spot-hibernation
+                  curl https://aws-cloudwatch.s3.amazonaws.com/downloads/CloudWatchMonitoringScripts-1.2.2.zip -O
+                  unzip CloudWatchMonitoringScripts-1.2.2.zip -d /usr/local/bin && \
+                  rm CloudWatchMonitoringScripts-1.2.2.zip
+                  pip install awscli
+                  mkdir -p /mnt/efs
+                  /opt/aws/bin/cfn-init -v --region ${AWS::Region} --stack ${AWS::StackName} --resource ECSLaunchConfiguration
+                  /opt/aws/bin/cfn-signal -e $? --region ${AWS::Region} --stack ${AWS::StackName} --resource ECSAutoScalingGroup
+      Metadata:
+          AWS::CloudFormation::Init:
+              config:
+                  packages:
+                      yum:
+                          awslogs: []
+                  commands:
+                      01_update_ecs_config:
+                          command: !Sub "bash /usr/local/bin/update_ecs_conf.sh"
+                      02_installing_metrics_cron:
+                          command: !Sub "echo '* * * * * /usr/local/bin/aws-scripts-mon/mon-put-instance-data.pl --mem-util --disk-space-util --disk-path=/ --from-cron' | crontab"
+                      03_cleanup_docker_volumes:
+                          command: !Sub "crontab -l | { cat; echo '* * * * * /usr/local/bin/cleanup_docker_volumes.sh'; } | crontab -"
+                      04_create_alarms:
+                          command: !Sub "bash /usr/local/bin/create_alarms.sh"
+                      05_create_state_directory:
+                        command: mkdir -p /var/awslogs/state
+                      06_start_awslogsd:
+                        command: systemctl start awslogsd
+                      07_enable_awslogd:
+                        command: systemctl enable awslogsd.service
+                      08_mount_efs:
+                          command: !Sub mkdir -p /mnt/efs && mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport,noatime,nodiratime ${FileSystem}.efs.${AWS::Region}.amazonaws.com:/ /mnt/efs
+                  files:
+                      /usr/local/bin/cleanup_docker_volumes.sh:
+                          mode: "000755"
+                          owner: "root"
+                          group: "root"
+                          content: !Sub |
+                              #!/bin/bash
+
+                              # Removing exited containers
+                              echo "Removing unused containers.."
+                              docker ps -qa --no-trunc --filter "status=exited"  | xargs -r docker rm
+
+                              RUNNING_VOLS_FILE=$(mktemp)
+
+                              #collect all volumes currently in use by running containers
+
+                              docker ps -q | while read c ; do docker inspect $c | jq -r '.[].Mounts[].Name' ; done  | sort | uniq | grep -v null > $RUNNING_VOLS_FILE
+
+                              echo "Removing unused shared volumes.."
+                              docker volume ls -q | while read volume ; do
+                                grep -q "$volume" $RUNNING_VOLS_FILE
+                                RET=$?
+                                if [ "$RET" != "0" ] ; then
+                                  echo "$volume"
+                                  docker volume rm $volume
+                                fi
+                              done
+
+                              rm -f $RUNNING_VOLS_FILE
+
+                      /usr/local/bin/update_ecs_conf.sh:
+                          mode: "000755"
+                          owner: "root"
+                          group: "root"
+                          content: !Sub |
+                              #!/bin/bash
+                              set -xe
+                              # add instance to ecs cluster
+                              echo ECS_CLUSTER=${ECSCluster} >> /etc/ecs/ecs.config
+                              # configure ECS image cleanup
+                              echo ECS_IMAGE_CLEANUP_INTERVAL=10m >> /etc/ecs/ecs.config
+                              echo ECS_IMAGE_MINIMUM_CLEANUP_AGE=15m >> /etc/ecs/ecs.config
+                              echo ECS_NUM_IMAGES_DELETE_PER_CYCLE=10 >> /etc/ecs/ecs.config
+
+                      /usr/local/bin/create_alarms.sh:
+                          mode: "000755"
+                          owner: "root"
+                          group: "root"
+                          content: !Sub |
+                              #!/bin/bash
+                              set -xe
+                              instance_id=$(wget -q -O- http://169.254.169.254/latest/meta-data/instance-id)
+
+                              aws cloudwatch put-metric-alarm --alarm-name DiskSpaceAlarm_"$instance_id" --alarm-description "Alarm when disk usage exceeds 80 percent" \
+                                --metric-name DiskSpaceUtilization --namespace "System/Linux" --statistic Average --period 300 --threshold 80 \
+                                --comparison-operator GreaterThanThreshold  --dimensions "Name=Filesystem,Value=/dev/nvme0n1p1" \
+                                "Name=InstanceId,Value=$instance_id" "Name=MountPath,Value=/" --evaluation-periods 1  \
+                                --alarm-actions ${AlarmEmailNotification} --unit Percent --region ${AWS::Region}
+
+                              aws cloudwatch put-metric-alarm --alarm-name MemoryUsageAlarm_"$instance_id" --alarm-description "Alarm when memory usage exceeds 85 percent" \
+                                --metric-name MemoryUtilization --namespace "System/Linux" --statistic Average --period 300 --threshold 85 \
+                                --comparison-operator GreaterThanThreshold  --dimensions "Name=InstanceId,Value=$instance_id" --evaluation-periods 1  \
+                                --alarm-actions ${AlarmEmailNotification} --unit Percent --region ${AWS::Region}
+
+                      "/etc/cfn/cfn-hup.conf":
+                          mode: 000400
+                          owner: root
+                          group: root
+                          content: !Sub |
+                              [main]
+                              stack=${AWS::StackId}
+                              region=${AWS::Region}
+
+                      "/etc/cfn/hooks.d/cfn-auto-reloader.conf":
+                          content: !Sub |
+                              [cfn-auto-reloader-hook]
+                              triggers=post.update
+                              path=Resources.ECSLaunchConfiguration.Metadata.AWS::CloudFormation::Init
+                              action=/opt/aws/bin/cfn-init -v --region ${AWS::Region} --stack ${AWS::StackName} --resource ECSLaunchConfiguration
+
+                      "/etc/awslogs/awscli.conf":
+                          content: !Sub |
+                              [plugins]
+                              cwlogs = cwlogs
+                              [default]
+                              region = ${AWS::Region}
+
+                      "/etc/awslogs/awslogs.conf":
+                          content: !Sub |
+                              [general]
+                              state_file = /var/lib/awslogs/agent-state
+
+                              [/var/log/dmesg]
+                              file = /var/log/dmesg
+                              log_group_name = ${ECSCluster}-/var/log/dmesg
+                              log_stream_name = ${ECSCluster}
+
+                              [/var/log/messages]
+                              file = /var/log/messages
+                              log_group_name = ${ECSCluster}-/var/log/messages
+                              log_stream_name = ${ECSCluster}
+                              datetime_format = %b %d %H:%M:%S
+
+                              [/var/log/docker]
+                              file = /var/log/docker
+                              log_group_name = ${ECSCluster}-/var/log/docker
+                              log_stream_name = ${ECSCluster}
+                              datetime_format = %Y-%m-%dT%H:%M:%S.%f
+
+                              [/var/log/ecs/ecs-init.log]
+                              file = /var/log/ecs/ecs-init.log.*
+                              log_group_name = ${ECSCluster}-/var/log/ecs/ecs-init.log
+                              log_stream_name = ${ECSCluster}
+                              datetime_format = %Y-%m-%dT%H:%M:%SZ
+
+                              [/var/log/ecs/ecs-agent.log]
+                              file = /var/log/ecs/ecs-agent.log.*
+                              log_group_name = ${ECSCluster}-/var/log/ecs/ecs-agent.log
+                              log_stream_name = ${ECSCluster}
+                              datetime_format = %Y-%m-%dT%H:%M:%SZ
+
+                              [/var/log/ecs/audit.log]
+                              file = /var/log/ecs/audit.log.*
+                              log_group_name = ${ECSCluster}-/var/log/ecs/audit.log
+                              log_stream_name = ${ECSCluster}
+                              datetime_format = %Y-%m-%dT%H:%M:%SZ
+
+Outputs:
+  Cluster:
+      Description: A reference to the ECS cluster
+      Value: !Ref ECSCluster
+      Export:
+            Name: !Sub ${AWS::StackName}-EcsCluster
+
+  ECSAutoScalingGroupName:
+      Description: A reference to ECS AutoScaling Group Name
+      Value: !Ref ECSAutoScalingGroup
+      Export:
+            Name: !Sub ${AWS::StackName}-EcsAsg
+
+  ECSServiceAutoScalingRole:
+      Description: A reference to ECS service auto scaling role
+      Value: !GetAtt ECSServiceAutoScalingRole.Arn
+      Export:
+            Name: !Sub ${AWS::StackName}-EcsAsgRole
+      
