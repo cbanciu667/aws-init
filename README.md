@@ -1,5 +1,5 @@
 # aws-init - Ci/Cd AWS event-driven pipeline orchestrator
-by B. Cosmin, 2020
+by B. Cosmin, 2020, https://bcosmin.net
 
 # Description
 This is a pipeline orchestrator based 100% on AWS and git-flow. \
@@ -34,6 +34,11 @@ aws-init is building the CD pipelines with CodePipeline and CodeBuild.
 * updated local_env_variables and cloned to env_variables
 * updated parameters.json into SecretsManager
 
+To avoid naming issues for various resources:\
+* MODULE NAMES SHOULD HAVE MAX 10 characters ! (e.g. website, kubernetes, ecs, costsctrl)
+* STAGE NAMES SHOULD HAVE MAX 5 characters ! (e.g prod, int dev, qa)
+* BRANCH NAMES SHOULD HAVE MAX 13 CHARACTERS ! (e.g. feature/G1542, mybranch, testbranch)
+
 ## Initial configuration
 1. after cloning this repo run rm -rf .git to remove current git configuration
 
@@ -54,26 +59,7 @@ STAGES=( dev int prod )\
 6. update parameters.json for the AWS Secrets Manager\
 with the values required by all CloudFormation templates in modules and including aws-init.\
 FYI: aws-init is also considered a module\
-Example:\
-{\
-  "aws-init-ci-version": "1.0.0",\
-  "aws-init-cd-dev-version": "1.0.0",\
-  "aws-init-cd-int-version": "1.0.0",\
-  "aws-init-cd-prod-version": "1.0.0",\
-  "vpc-ci-version": "1.0.0",\
-  "vpc-cd-dev-version": "1.0.0",\
-  "vpc-cd-int-version": "1.0.0",\  
-  "vpc-cd-prod-version": "1.0.0",\  
-  "vpc-cidr": "10.10.0.0/23",\    
-  "ecs-ci-version": "1.0.0",\  
-  "ecs-cd-dev-version": "1.0.0",\
-  "ecs-cd-int-version": "1.0.0",\
-  "ecs-cd-prod-version": "1.0.0",\
-  "route53-cd-dev-version": "1.0.0",\
-  "route53-cd-int-version": "1.0.0",\
-  "route53-cd-prod-version": "1.0.0",\  
-  "route53-domain-name": "domain.com"\    
-}\
+Check parameters_example.json
 
 7. run ./secrets.sh create
 
@@ -128,7 +114,7 @@ This is also a central piece of the aws-init configuration.\
 Secrets Manager Requester Lambda acts as a proxy between CF stacks and Secrets Manager.\
 Why ? Because even if querying secrets directly from SM works fine in most cases,\
 for some resource properties it doesn't work at the moment (e.g. Domain Zone Name property) or\
-when using direct query with !Cidr functions.
+case is using that with !Cidr function.
 
 ## Planned improvments in Q2 2020
 * Delete features for pipelines

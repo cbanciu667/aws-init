@@ -1,0 +1,577 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Template for the CI pipelines'
+
+Parameters:
+  ProjectName:
+    Description: Name for the current project
+    Type: String
+    Default: test-project
+  BranchName:
+    Description: CodeCommit branch name for CodePipeline
+    Type: String
+    Default: master  
+  ModuleName:
+    Description: Module for which pipeline is build
+    Type: String
+    Default: aws-init
+  Version:
+    Description: Version
+    Type: String
+    Default: 1.0.0
+
+Conditions:
+  MasterBranch: !Equals
+                  - !Ref BranchName
+                  - 'master'
+  
+Resources:
+# S3
+# S3 bucket used for to store various pipeline artifacts
+#
+  ModuleArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Condition: MasterBranch    
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-artifacts-bucket
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      Tags: 
+        - 
+          Key: "scope"
+          Value: !Ref ProjectName
+        - 
+          Key: 'module'
+          Value: !Ref ModuleName
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}          
+# CodeCommit
+# CodeCommit repo for the aws init module
+#
+  ModuleRepo:
+    Type: AWS::CodeCommit::Repository
+    Condition: MasterBranch
+    DeletionPolicy: Retain    
+    Properties:
+      RepositoryDescription: Aws Init repository
+      RepositoryName: !Sub ${AWS::StackName}-repo
+      Tags: 
+        - 
+          Key: "scope"
+          Value: !Ref ProjectName
+        - 
+          Key: 'module'
+          Value: !Ref ModuleName
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}    
+# CloudWatch
+# Permissions used by CloudWatch to invoke pipeline management lambda
+#
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: MasterBranch     
+    Properties:
+      FunctionName: !Ref ModuleCreatePipeline
+      Action: 'lambda:InvokeFunction'
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt AmazonCloudWatchEventRule.Arn
+# CloudWatch
+# CloudWatch event rule used to trigger lambda based on updates in CC repo
+#
+  AmazonCloudWatchEventRule:
+    Type: AWS::Events::Rule
+    Condition: MasterBranch     
+    Properties:
+      EventPattern:
+        source:
+          - aws.codecommit
+        detail-type:
+          - CodeCommit Repository State Change
+        resources:
+          - !Join 
+            - ''
+            - - 'arn:aws:codecommit:'
+              - !Ref AWS::Region
+              - ':'
+              - !Ref AWS::AccountId
+              - ':'
+              - !If 
+                - MasterBranch 
+                - !GetAtt ModuleRepo.Name
+                - Fn::ImportValue: 
+                    !Sub "${ProjectName}-pipeline-${ModuleName}-master-repo"
+        detail:
+          event:
+              - referenceCreated
+              - referenceUpdated
+              - referenceDeleted
+          referenceType:
+            - branch
+      State: ENABLED
+      Targets: 
+        - Arn: !GetAtt ModuleCreatePipeline.Arn
+          Id: ModuleCreatePipeline
+# Lambda
+# Role and permissions used by the pipelines management lambda function
+# 
+  ModuleCreatePipelineLambdaRole:
+    Type: AWS::IAM::Role
+    Condition: MasterBranch    
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-lambda-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /        
+      Policies:
+        - PolicyName: !Sub ${AWS::StackName}-lmbd-policy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - cloudformation:*
+                  - codepipeline:*
+                  - codebuild:*
+                  - lambda:*               
+                  - cloudwatch:*List*       
+                  - cloudwatch:*Describe*
+                  - cloudwatch:*Put*     
+                  - cloudwatch:*Get*
+                  - s3:*Get*
+                  - s3:*List*   
+                  - logs:*Create*                                 
+                  - logs:*List*
+                  - logs:*Get*
+                  - logs:*Put*
+                  - logs:*Describe*                                  
+                  - iam:CreateInstanceProfile
+                  - iam:UpdateAssumeRolePolicy
+                  - iam:GetPolicyVersion
+                  - iam:ListRoleTags
+                  - iam:TagRole
+                  - iam:RemoveRoleFromInstanceProfile
+                  - iam:CreateRole
+                  - iam:AttachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:AddRoleToInstanceProfile
+                  - iam:ListInstanceProfilesForRole
+                  - iam:PassRole
+                  - iam:DetachRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:ListAttachedRolePolicies
+                  - iam:ListRolePolicies
+                  - iam:CreatePolicyVersion
+                  - iam:ListPolicies
+                  - iam:GetRole
+                  - iam:GetInstanceProfile
+                  - iam:GetPolicy
+                  - iam:ListEntitiesForPolicy
+                  - iam:ListRoles
+                  - iam:DeleteRole
+                  - iam:UpdateRoleDescription
+                  - iam:ListInstanceProfiles
+                  - iam:CreatePolicy
+                  - iam:ListPolicyVersions
+                  - iam:UpdateRole
+                  - iam:GetRolePolicy
+                  - iam:DeletePolicy                  
+                  - iam:DeletePolicyVersion
+                Resource: '*'
+      Tags: 
+        - 
+          Key: 'scope'
+          Value: !Ref ProjectName
+        - 
+          Key: 'module'
+          Value: !Ref ModuleName
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}                  
+# Lambda
+# Pipelines management lambda function
+#
+  ModuleCreatePipeline:
+    DependsOn: ModuleCreatePipelineLambdaRole
+    Type: AWS::Lambda::Function
+    Condition: MasterBranch
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-lambda
+      Handler: index.lambda_handler
+      Role: !GetAtt ModuleCreatePipelineLambdaRole.Arn
+      Runtime: "python3.6"
+      Timeout: 25
+      Environment:
+            Variables:
+              TEMPLATE_VERSION: !Ref Version
+              PROJECT_NAME: !Ref ProjectName
+              MODULE_NAME: !Ref ModuleName
+              S3_BUCKET: !Ref ModuleArtifactsBucket
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+          codecommit_client = boto3.client('codecommit')
+          codepipeline_client = boto3.client('codepipeline')          
+          cf_client = boto3.client('cloudformation')          
+          def lambda_handler(event, context):
+              RepositoryName = event['detail']['repositoryName']
+              Branch = event['detail']['referenceName']
+              ProjectName = os.environ['PROJECT_NAME']              
+              Version = os.environ['TEMPLATE_VERSION']              
+              ModuleName = os.environ['MODULE_NAME']                
+              S3Bucket = os.environ['S3_BUCKET']              
+              Event = event['detail']['event']
+              Account = event['account']              
+              Region=event['region']              
+              print(event)
+              if (Branch == "master") and (Event == "referenceCreated" or Event == "referenceUpdated"):
+                codepipeline_response = codepipeline_client.start_pipeline_execution(
+                  name=f'{ProjectName}-ci-pipeline-{ModuleName}-master-pipeline'
+                )
+              elif (Branch != "master") and (Event == "referenceCreated"):
+                cf_client.create_stack(
+                    StackName= f'{ProjectName}-ci-pipeline-{ModuleName}-{Branch}',
+                    TemplateURL= f'https://{S3Bucket}.s3-{Region}.amazonaws.com/templates/{ModuleName}-ci-pipeline-{Version}.yaml',
+                    Parameters=[
+                        {
+                            'ParameterKey': 'ProjectName',
+                            'ParameterValue': ProjectName,
+                            'UsePreviousValue': False
+                        },
+                        {
+                            'ParameterKey': 'ModuleName',
+                            'ParameterValue': ModuleName,
+                            'UsePreviousValue': False
+                        },                        
+                        {
+                            'ParameterKey': 'BranchName',
+                            'ParameterValue': Branch,
+                            'UsePreviousValue': False
+                        },
+                        {
+                            'ParameterKey': 'Version',
+                            'ParameterValue': Version,
+                            'UsePreviousValue': False
+                        }                        
+                    ],
+                    OnFailure='ROLLBACK',
+                    Capabilities=['CAPABILITY_IAM','CAPABILITY_NAMED_IAM']
+                )
+              elif (Branch != "master") and (Event == "referenceDeleted"):
+                cf_client.delete_stack(
+                    StackName= f'{ProjectName}-ci-pipeline-{ModuleName}-{Branch}'
+                  )
+              elif (Branch != "master") and (Event == "referenceUpdated"):
+                codepipeline_response = codepipeline_client.start_pipeline_execution(
+                  name=f'{ProjectName}-ci-pipeline-{ModuleName}-{Branch}-pipeline'
+                )
+              else:
+                print('CC triggered lambda function but no lambda action is defined!')
+      Tags: 
+        - 
+          Key: 'scope'
+          Value: !Ref ProjectName
+        - 
+          Key: 'module'
+          Value: !Ref ModuleName 
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}         
+# CodeBuild
+# Role used by CodeBuild to deploy other modules pipelines
+#
+  ModuleCodeBuildRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: !Sub ${AWS::StackName}-cb-role
+        AssumeRolePolicyDocument:
+          Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+          Version: '2012-10-17'
+        Path: /
+        Policies:
+          - PolicyName: !Sub ${AWS::StackName}-cb-policy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Action:
+                  - s3:*Get*        
+                  - s3:*Put*     
+                  - s3:*List*
+                  - s3:*Describe* 
+                  - s3:DeleteObject                                               
+                  - logs:*Create*                                 
+                  - logs:*List*
+                  - logs:*Get*
+                  - logs:*Put*
+                  - logs:*Describe*  
+                  - cloudwatch:*List*
+                  - cloudwatch:*Describe*
+                  - cloudwatch:*Put*
+                  - cloudwatch:*Get*                    
+                  - cloudwatch:*Set*
+                  - cloudformation:*List*
+                  - cloudformation:*Describe*
+                  - cloudformation:*Get*
+                  - cloudformation:*Update*                  
+                  - cloudwatch:*Set*
+                  - cloudformation:ValidateTemplate                                                 
+                  - secretsmanager:GetSecretValue
+                  - ecr:*List*
+                  - ecr:*Get*
+                  - ecr:*Put*
+                  - ecr:*Upload*  
+                  - ecr:*Start*
+                  - ecr:*Initiate*                                                   
+                  - ecr:*Tag*
+                  - iam:CreateInstanceProfile
+                  - iam:UpdateAssumeRolePolicy
+                  - iam:GetPolicyVersion
+                  - iam:ListRoleTags
+                  - iam:TagRole
+                  - iam:RemoveRoleFromInstanceProfile
+                  - iam:CreateRole
+                  - iam:AttachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:AddRoleToInstanceProfile
+                  - iam:ListInstanceProfilesForRole
+                  - iam:PassRole
+                  - iam:DetachRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:ListAttachedRolePolicies
+                  - iam:ListRolePolicies
+                  - iam:CreatePolicyVersion
+                  - iam:ListPolicies
+                  - iam:GetRole
+                  - iam:GetInstanceProfile
+                  - iam:GetPolicy
+                  - iam:ListEntitiesForPolicy
+                  - iam:ListRoles
+                  - iam:DeleteRole
+                  - iam:UpdateRoleDescription
+                  - iam:ListInstanceProfiles
+                  - iam:CreatePolicy
+                  - iam:ListPolicyVersions
+                  - iam:UpdateRole
+                  - iam:GetRolePolicy
+                  - iam:DeletePolicy                  
+                  - iam:DeletePolicyVersion
+                  - codepipeline:UpdatePipeline
+                  - codepipeline:StartPipelineExecution 
+                  - codepipeline:GetPipeline                                                             
+                  Effect: Allow
+                  Resource: '*'
+        Tags: 
+          - 
+            Key: "scope"
+            Value: !Ref ProjectName
+          - 
+            Key: 'module'
+            Value: !Ref ModuleName
+          - 
+            Key: 'security'
+            Value: !Sub ${ProjectName}-${ModuleName}               
+# CodeBuild
+# This CodeBuild configuration is used to deploy other module pipelines                  
+#
+  ModuleConfigFileBuild:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${AWS::StackName}-cb
+      Description: !Sub "Code build for AWS Init and branch ${BranchName}"
+      ServiceRole: !Ref ModuleCodeBuildRole
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:3.0
+        EnvironmentVariables:
+          - Name: ARTIFACT_BUCKET
+            Value: !If 
+                    - MasterBranch 
+                    - !Ref ModuleArtifactsBucket
+                    - Fn::ImportValue: 
+                        !Sub "${ProjectName}-ci-pipeline-${ModuleName}-master-artifacts-bucket"
+      Source:
+        Type: CODEPIPELINE
+      Tags: 
+        - 
+          Key: 'scope'
+          Value: !Ref ProjectName
+        - 
+          Key: 'module'
+          Value: !Ref ModuleName
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}
+# CodePipeline
+# Role and permissions used by the CI pipeline
+#            
+  ModuleCiCodePipelineServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: !Sub ${AWS::StackName}-cpci-policy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codecommit:GetBranch
+                  - codecommit:GetCommit
+                  - codecommit:GetUploadArchiveStatus
+                  - codecommit:CancelUploadArchive                  
+                  - codecommit:UploadArchive
+                  - codedeploy:CreateDeployment
+                  - codedeploy:GetDeployment
+                  - codedeploy:GetDeploymentConfig
+                  - codedeploy:GetApplicationRevision                  
+                  - codedeploy:RegisterApplicationRevision
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                  - lambda:InvokeFunction
+                  - lambda:ListFunctions
+                  - s3:*Put*
+                  - s3:*Get*                  
+                  - s3:*Create*
+                  - s3:*Update*
+                  - iam:PassRole                  
+                  - cloudwatch:*List*
+                  - cloudwatch:*Describe*
+                  - cloudwatch:*Put*
+                  - cloudwatch:*Get*                    
+                  - cloudwatch:*Set*
+                  - cloudformation:*List*
+                  - cloudformation:*Describe*
+                  - cloudformation:*Get*              
+                  - cloudformation:CreateStack
+                  - cloudformation:DeleteStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:UpdateStack
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:SetStackPolicy
+                  - cloudformation:ValidateTemplate
+                  - ecr:DescribeImages
+                  - ecs:DescribeServices
+                  - ecs:DescribeTaskDefinition
+                  - ecs:DescribeTasks
+                  - ecs:ListTasks
+                  - ecs:RegisterTaskDefinition
+                  - ecs:UpdateService
+                  - codestar-connections:UseConnection
+                Resource: '*'
+      Tags: 
+        - 
+          Key: 'scope'
+          Value: !Ref ProjectName
+        - 
+          Key: 'module'
+          Value: !Ref ModuleName    
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}                                
+# CodePipeline
+# The CI pipeline      
+#
+  ModuleCiPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    DependsOn: ModuleCiCodePipelineServiceRole
+    Properties:
+      Name: !Sub ${AWS::StackName}-pipeline
+      RoleArn: !GetAtt ModuleCiCodePipelineServiceRole.Arn
+      ArtifactStore:
+        Location: !If 
+                  - MasterBranch 
+                  - !Ref ModuleArtifactsBucket
+                  - Fn::ImportValue: 
+                      !Sub "${ProjectName}-ci-pipeline-${ModuleName}-master-artifacts-bucket"
+        Type: S3        
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: ConfigSourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: CodeCommit
+              OutputArtifacts:
+                - Name: SourceOutput
+              Configuration:
+                BranchName: !Ref BranchName              
+                RepositoryName: !If 
+                                - MasterBranch
+                                - !GetAtt ModuleRepo.Name
+                                - Fn::ImportValue: 
+                                    !Sub "${ProjectName}-ci-pipeline-${ModuleName}-master-repo"
+                PollForSourceChanges: false
+              RunOrder: 1
+        - Name: ModulesPipelines
+          Actions:
+            - Name: !Sub ${AWS::StackName}-cb-step
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              Configuration:
+                ProjectName: !Ref ModuleConfigFileBuild
+              InputArtifacts:
+                - Name: SourceOutput
+      Tags: 
+        - 
+          Key: 'scope'
+          Value: !Ref ProjectName
+        - 
+          Key: 'module'
+          Value: !Ref ModuleName 
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}                     
+#
+# Outputs section
+#
+Outputs:
+  CodeCommitRepo:
+    Description: Code commit repo for the module
+    Condition: MasterBranch
+    Value: !GetAtt  ModuleRepo.Name
+    Export:
+      Name: !Sub ${AWS::StackName}-repo              
+  ArtifactsS3Bucket:
+    Description: S3 bucket for the pipeline
+    Condition: MasterBranch
+    Value: !Ref ModuleArtifactsBucket
+    Export:
+      Name: !Sub ${AWS::StackName}-artifacts-bucket                           

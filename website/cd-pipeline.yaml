@@ -27,7 +27,7 @@ Resources:
 # CodePipeline
 # Role and permissions used by the CF deploy step in the CD pipeline
 #            
-  ModuleCdCfCodePipelineServiceRole:
+  ModuleCodeBuildRole:
     Type: 'AWS::IAM::Role'
     Properties:
       AssumeRolePolicyDocument:
@@ -36,11 +36,11 @@ Resources:
           - Effect: Allow
             Principal:
               Service:
-                - cloudformation.amazonaws.com
+                - codebuild.amazonaws.com
             Action: 'sts:AssumeRole'
       Path: /
       Policies:
-        - PolicyName: !Sub ${AWS::StackName}-cf-policy
+        - PolicyName: !Sub ${AWS::StackName}-cb-policy
           PolicyDocument:
             Version: 2012-10-17
             Statement:
@@ -50,11 +50,14 @@ Resources:
                   - s3:*Get*
                   - s3:*Create*
                   - s3:*Update*
+                  - s3:*List*
+                  - s3:DeleteObject
                   - cloudwatch:*List*
                   - cloudwatch:*Describe*
                   - cloudwatch:*Put*
                   - cloudwatch:*Get*                    
                   - cloudwatch:*Set*
+                  - cloudfront:*
                   - logs:*
                   - ec2:*
                   - ebs:*
@@ -127,7 +130,41 @@ Resources:
           Value: !Ref ModuleName
         - 
           Key: 'security'
-          Value: !Sub ${ProjectName}-${ModuleName} 
+          Value: !Sub ${ProjectName}-${ModuleName}
+# CodeBuild
+# This CodeBuild configuration is used to deploy other module pipelines                  
+#
+  ModuleConfigFileBuild:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${AWS::StackName}-cb
+      Description: !Sub "Code build for AWS Init and stage ${StageName}"
+      ServiceRole: !Ref ModuleCodeBuildRole
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:3.0
+        EnvironmentVariables:
+          - Name: ARTIFACT_BUCKET
+            Value: 
+              Fn::ImportValue: 
+                !Sub "${ProjectName}-ci-pipeline-${ModuleName}-master-artifacts-bucket"
+          - Name: STAGE_NAME
+            Value: !Ref StageName               
+      Source:
+        Type: CODEPIPELINE
+      Tags: 
+        - 
+          Key: 'scope'
+          Value: !Ref ProjectName
+        - 
+          Key: 'module'
+          Value: !Ref ModuleName
+        - 
+          Key: 'security'
+          Value: !Sub ${ProjectName}-${ModuleName}          
 # CodePipeline
 # Role and permissions used by the CD pipeline
 #            
@@ -256,66 +293,18 @@ Resources:
               OutputArtifacts: []
               Configuration: {}
               RunOrder: 1
-        - Name: DeploymentEcsCluster
+        - Name: DeployWithCodeBuild
           Actions:
-            - InputArtifacts:
-                - Name: CfTemplates
-              Name: !Sub EcsDeploymentTo${StageName}
+            - Name: !Sub ${AWS::StackName}-cb-deploy-step
               ActionTypeId:
-                Category: Deploy
+                Category: Build
                 Owner: AWS
-                Version: '1'
-                Provider: CloudFormation
-              OutputArtifacts: []
+                Provider: CodeBuild
+                Version: "1"
               Configuration:
-                ActionMode: CREATE_UPDATE
-                RoleArn: 
-                  !GetAtt ModuleCdCfCodePipelineServiceRole.Arn
-                Capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
-                StackName: !Sub "${ProjectName}-${ModuleName}-${StageName}"
-                ParameterOverrides: !Sub '{"ProjectName": "${ProjectName}","StageName": "${StageName}","ModuleName": "${ModuleName}"}'
-                TemplatePath: !Sub "CfTemplates::ecs.yaml"
-              RunOrder: 1
-        - Name: DeploymentEcsAlb
-          Actions:
-            - InputArtifacts:
+                ProjectName: !Ref ModuleConfigFileBuild
+              InputArtifacts:
                 - Name: CfTemplates
-              Name: !Sub EcsAlbDeploymentTo${StageName}
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Version: '1'
-                Provider: CloudFormation
-              OutputArtifacts: []
-              Configuration:
-                ActionMode: CREATE_UPDATE
-                RoleArn: 
-                  !GetAtt ModuleCdCfCodePipelineServiceRole.Arn
-                Capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
-                StackName: !Sub "${ProjectName}-${ModuleName}-${StageName}-Alb"
-                ParameterOverrides: !Sub '{"ProjectName": "${ProjectName}","StageName": "${StageName}","ModuleName": "${ModuleName}"}'
-                TemplatePath: !Sub "CfTemplates::ecs_alb.yaml"
-              RunOrder: 2
-        - Name: DeploymentEcsNginx
-          Actions:
-            - InputArtifacts:
-                - Name: CfTemplates
-              Name: !Sub EcsNginxDeploymentTo${StageName}
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Version: '1'
-                Provider: CloudFormation
-              OutputArtifacts: []
-              Configuration:
-                ActionMode: CREATE_UPDATE
-                RoleArn: 
-                  !GetAtt ModuleCdCfCodePipelineServiceRole.Arn
-                Capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
-                StackName: !Sub "${ProjectName}-${ModuleName}-${StageName}-Nginx"
-                ParameterOverrides: !Sub '{"ProjectName": "${ProjectName}","StageName": "${StageName}","ModuleName": "${ModuleName}"}'
-                TemplatePath: !Sub "CfTemplates::ecs_service_nginx.yaml"
-              RunOrder: 3
       Tags: 
         - 
           Key: 'scope'

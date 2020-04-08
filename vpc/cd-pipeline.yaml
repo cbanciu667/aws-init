@@ -54,6 +54,7 @@ Resources:
                   - cloudwatch:*Put*
                   - cloudwatch:*Get*                    
                   - cloudwatch:*Set*
+                  - acm:*
                   - ec2:*
                   - ebs:*
                   - sns:*

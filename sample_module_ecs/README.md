@@ -1,1 +1,0 @@
-ECS module to be integrated with aws-init

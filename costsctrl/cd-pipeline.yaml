@@ -69,6 +69,7 @@ Resources:
                   - cur:*
                   - ce:* 
                   - ssm:* 
+                  - eks:*
                   - lambda:*                                               
                   - route53:*
                   - apigateway:*  
@@ -129,7 +130,7 @@ Resources:
           Key: 'security'
           Value: !Sub ${ProjectName}-${ModuleName} 
 # CodePipeline
-# Role and permissions used by the CD pipeline
+# Role and permissions used by the CD pipelines
 #            
   ModuleCdCodePipelineServiceRole:
     Type: 'AWS::IAM::Role'
@@ -274,48 +275,8 @@ Resources:
                 Capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
                 StackName: !Sub "${ProjectName}-${ModuleName}-${StageName}"
                 ParameterOverrides: !Sub '{"ProjectName": "${ProjectName}","StageName": "${StageName}","ModuleName": "${ModuleName}"}'
-                TemplatePath: !Sub "CfTemplates::ecs.yaml"
+                TemplatePath: !Sub "CfTemplates::cost-controller.yaml"
               RunOrder: 1
-        - Name: DeploymentEcsAlb
-          Actions:
-            - InputArtifacts:
-                - Name: CfTemplates
-              Name: !Sub EcsAlbDeploymentTo${StageName}
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Version: '1'
-                Provider: CloudFormation
-              OutputArtifacts: []
-              Configuration:
-                ActionMode: CREATE_UPDATE
-                RoleArn: 
-                  !GetAtt ModuleCdCfCodePipelineServiceRole.Arn
-                Capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
-                StackName: !Sub "${ProjectName}-${ModuleName}-${StageName}-Alb"
-                ParameterOverrides: !Sub '{"ProjectName": "${ProjectName}","StageName": "${StageName}","ModuleName": "${ModuleName}"}'
-                TemplatePath: !Sub "CfTemplates::ecs_alb.yaml"
-              RunOrder: 2
-        - Name: DeploymentEcsNginx
-          Actions:
-            - InputArtifacts:
-                - Name: CfTemplates
-              Name: !Sub EcsNginxDeploymentTo${StageName}
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Version: '1'
-                Provider: CloudFormation
-              OutputArtifacts: []
-              Configuration:
-                ActionMode: CREATE_UPDATE
-                RoleArn: 
-                  !GetAtt ModuleCdCfCodePipelineServiceRole.Arn
-                Capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
-                StackName: !Sub "${ProjectName}-${ModuleName}-${StageName}-Nginx"
-                ParameterOverrides: !Sub '{"ProjectName": "${ProjectName}","StageName": "${StageName}","ModuleName": "${ModuleName}"}'
-                TemplatePath: !Sub "CfTemplates::ecs_service_nginx.yaml"
-              RunOrder: 3
       Tags: 
         - 
           Key: 'scope'

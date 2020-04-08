@@ -55,6 +55,7 @@ Resources:
                   - cloudwatch:*Put*
                   - cloudwatch:*Get*                    
                   - cloudwatch:*Set*
+                  - acm:*
                   - ec2:*
                   - ebs:*
                   - sns:*
@@ -252,11 +253,11 @@ Resources:
               OutputArtifacts: []
               Configuration: {}
               RunOrder: 1
-        - Name: Deployment
+        - Name: DeploymentR53
           Actions:
             - InputArtifacts:
                 - Name: CfTemplates
-              Name: !Sub ModuleDeploymentTo${StageName}
+              Name: !Sub R53DeploymentTo${StageName}
               ActionTypeId:
                 Category: Deploy
                 Owner: AWS
@@ -272,6 +273,25 @@ Resources:
                 ParameterOverrides: !Sub '{"ProjectName": "${ProjectName}","StageName": "${StageName}","ModuleName": "${ModuleName}"}'
                 TemplatePath: !Sub "CfTemplates::route53.yaml"
               RunOrder: 1
+        - Name: DeploymentCertificates
+          Actions:
+            - InputArtifacts:
+                - Name: CfTemplates
+              Name: !Sub CertificatesDeploymentTo${StageName}
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: '1'
+                Provider: CloudFormation
+              OutputArtifacts: []
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                RoleArn: 
+                  !GetAtt ModuleCdCfCodePipelineServiceRole.Arn
+                StackName: !Sub "${ProjectName}-${ModuleName}-${StageName}-certs"
+                ParameterOverrides: !Sub '{"ProjectName": "${ProjectName}","StageName": "${StageName}","ModuleName": "${ModuleName}"}'
+                TemplatePath: !Sub "CfTemplates::certificates.yaml"
+              RunOrder: 2              
       Tags: 
         - 
           Key: 'scope'

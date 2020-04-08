@@ -1,4 +1,0 @@
-DEFAULT_AWS_REGION=eu-central-1
-PROJECT_NAME=myproject
-MODULE=vpc
-STAGES=( dev prod )
